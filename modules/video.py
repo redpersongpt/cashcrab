@@ -13,6 +13,7 @@ from moviepy.editor import (
 from modules.config import section, ROOT
 from modules import llm, tts
 from modules.auth import get_api_key
+from modules import ui
 
 OUTPUT_DIR = ROOT / "output"
 SHORTS_DIR = ROOT / "shorts"
@@ -26,7 +27,7 @@ def _fetch_pexels_videos(query: str, count: int = 5) -> list[str]:
     cfg = section("visuals")
     api_key = get_api_key("pexels") or cfg.get("pexels_api_key", "")
     if not api_key:
-        raise RuntimeError("No Pexels API key. Run: python main.py auth keys")
+        raise RuntimeError("No Pexels API key. Open CashCrab -> Setup -> Save API keys.")
 
     resp = requests.get(
         "https://api.pexels.com/videos/search",
@@ -169,13 +170,13 @@ def generate_short(topic: str | None = None) -> dict:
     niche = yt_cfg.get("niche", "interesting facts")
     sentences = yt_cfg.get("script_sentences", 5)
 
-    print("Step 1/5: Generating script...")
+    ui.step(1, 5, "Writing the Short")
     if not topic:
         topic = llm.generate(
             f"Generate a single compelling video topic about: {niche}. "
             "Just the topic, nothing else. Max 10 words."
         )
-    print(f"  Topic: {topic}")
+    ui.info(f"Topic: {topic}")
 
     script = llm.generate(
         f"Write a YouTube Shorts script about: {topic}\n"
@@ -187,9 +188,9 @@ def generate_short(topic: str | None = None) -> dict:
         f"- Under 60 seconds when spoken aloud",
         system="You are a viral YouTube Shorts scriptwriter."
     )
-    print(f"  Script: {script[:100]}...")
+    ui.info(f"Script ready: {script[:100]}...")
 
-    print("Step 2/5: Generating metadata...")
+    ui.step(2, 5, "Creating the title and description")
     meta = llm.generate_json(
         f'For this YouTube Short script, generate a JSON object with '
         f'"title" (under 70 chars, catchy) and "description" (2-3 sentences with relevant hashtags).\n\n'
@@ -197,14 +198,14 @@ def generate_short(topic: str | None = None) -> dict:
     )
     title = meta.get("title", topic[:70])
     description = meta.get("description", "")
-    print(f"  Title: {title}")
+    ui.info(f"Title: {title}")
 
-    print("Step 3/5: Generating audio + subtitles...")
+    ui.step(3, 5, "Generating audio and subtitles")
     stem = f"narration_{uuid.uuid4().hex[:6]}"
     audio_path, srt_path = tts.synthesize(script, stem)
-    print(f"  Audio: {audio_path}")
+    ui.info(f"Audio file: {audio_path}")
 
-    print("Step 4/5: Fetching visuals...")
+    ui.step(4, 5, "Collecting visuals")
     vis_cfg = section("visuals")
     source = vis_cfg.get("source", "pexels")
 
@@ -223,13 +224,13 @@ def generate_short(topic: str | None = None) -> dict:
             prompts = list(prompts.values())[0]
         visual_paths = _generate_dalle_images(prompts)
 
-    print("Step 5/5: Assembling video...")
+    ui.step(5, 5, "Building the final video")
     if source == "pexels":
         video_path = _build_video_from_stock(visual_paths, str(audio_path), str(srt_path) if srt_path else None)
     else:
         video_path = _build_video_from_images(visual_paths, str(audio_path), str(srt_path) if srt_path else None)
 
-    print(f"  Video: {video_path}")
+    ui.success(f"Short created: {video_path}")
 
     _cleanup_temp_files(visual_paths, str(audio_path), str(srt_path) if srt_path else None)
 

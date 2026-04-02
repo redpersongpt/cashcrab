@@ -2,6 +2,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
 from modules.config import section, ROOT
+from modules import ui
 
 DB_PATH = ROOT / "jobs.sqlite"
 
@@ -22,18 +23,18 @@ def _youtube_job():
             result["title"],
             result["description"],
         )
-        print(f"[scheduler] YouTube short uploaded: {result['title']}")
+        ui.success(f"Scheduler uploaded a YouTube Short: {result['title']}")
     except Exception as e:
-        print(f"[scheduler] YouTube job failed: {e}")
+        ui.fail(f"Scheduler YouTube job failed: {e}")
 
 
 def _twitter_job():
     from modules import twitter
     try:
         twitter.run_batch(count=1, affiliate_ratio=0.3)
-        print("[scheduler] Twitter post done")
+        ui.success("Scheduler posted to Twitter / X.")
     except Exception as e:
-        print(f"[scheduler] Twitter job failed: {e}")
+        ui.fail(f"Scheduler Twitter job failed: {e}")
 
 
 def start():
@@ -46,7 +47,7 @@ def start():
             _youtube_job, "cron", hour=h, minute=0,
             id=f"youtube_{h}", replace_existing=True,
         )
-        print(f"YouTube job scheduled at {h:02d}:00 daily")
+        ui.info(f"YouTube job scheduled for {h:02d}:00 every day")
 
     tw_cfg = section("twitter")
     interval = tw_cfg.get("schedule_interval_minutes", 120)
@@ -54,11 +55,11 @@ def start():
         _twitter_job, "interval", minutes=interval,
         id="twitter_bot", replace_existing=True,
     )
-    print(f"Twitter job scheduled every {interval} minutes")
+    ui.info(f"Twitter / X job scheduled every {interval} minutes")
 
-    print("\nScheduler running. Ctrl+C to stop.")
+    ui.success("Scheduler is running. Press Ctrl+C to stop it.")
     try:
         scheduler.start()
     except KeyboardInterrupt:
         scheduler.shutdown()
-        print("Scheduler stopped.")
+        ui.warn("Scheduler stopped.")

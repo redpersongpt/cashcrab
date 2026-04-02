@@ -7,8 +7,9 @@ Thanks for wanting to help the crab grow its treasure chest.
 ```bash
 git clone https://github.com/YOUR_USER/cashcrab.git
 cd cashcrab
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv venv && source venv/bin/activate
+python3 -m pip install -r requirements.txt
+python3 -m pip install -e .
 cp config.example.json config.json
 ```
 
@@ -36,6 +37,7 @@ modules/
 3. **No hardcoded secrets.** Everything goes through `config.json` or `tokens/`.
 4. **One module = one feature.** Don't cross-wire modules. They talk through `main.py`.
 5. **Error handling.** Retry with backoff, max 3 attempts, then fail with a clear message. No recursive retries.
+6. **Menu-first UX.** The default `cashcrab` experience must stay simple, colorful, and understandable without memorizing commands.
 
 ## Adding a New Platform
 

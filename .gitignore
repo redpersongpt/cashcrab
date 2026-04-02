@@ -8,5 +8,7 @@ __pycache__/
 output/
 shorts/*.mp4
 venv/
+.venv/
+*.egg-info/
 jobs.sqlite
 leads_*.csv
