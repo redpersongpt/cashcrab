@@ -1,0 +1,62 @@
+{
+  "llm": {
+    "provider": "g4f",
+    "model": "gpt-4o-mini",
+    "_comment": "provider: g4f (free, uses your subscriptions) | ollama (local). No API key needed for g4f."
+  },
+  "tts": {
+    "provider": "edge",
+    "voice": "en-US-ChristopherNeural",
+    "rate": "+0%",
+    "_comment": "edge-tts is free. Voices: en-US-ChristopherNeural, en-US-JennyNeural, en-GB-RyanNeural"
+  },
+  "youtube": {
+    "client_secrets_file": "client_secrets.json",
+    "shorts_folder": "./shorts",
+    "default_tags": ["shorts"],
+    "category_id": "22",
+    "privacy_status": "public",
+    "niche": "productivity tips",
+    "script_sentences": 5,
+    "schedule_hours": [9, 15]
+  },
+  "visuals": {
+    "source": "pexels",
+    "_comment": "source: pexels (free stock video) | dalle (AI images via g4f). Set pexels key with: python main.py auth keys"
+  },
+  "twitter": {
+    "client_id": "",
+    "client_secret": "",
+    "oauth_port": 8189,
+    "affiliate_tag": "yourtag-20",
+    "schedule_interval_minutes": 120,
+    "products": [
+      {
+        "name": "Wireless Earbuds",
+        "url": "https://amzn.to/EXAMPLE",
+        "keywords": ["tech", "audio", "gadgets"]
+      }
+    ],
+    "_comment": "Get client_id from developer.twitter.com -> OAuth 2.0 settings. Then run: python main.py auth twitter"
+  },
+  "leads": {
+    "search_queries": ["plumber", "dentist", "accountant"],
+    "locations": ["New York, NY", "Los Angeles, CA"],
+    "radius_meters": 5000,
+    "output_file": "./leads.csv",
+    "email_filter": ["noreply", "no-reply", "donotreply", "webmaster", "postmaster", "mailer-daemon"],
+    "smtp": {
+      "host": "smtp.gmail.com",
+      "port": 587,
+      "email": "",
+      "password": ""
+    },
+    "from_name": "Your Name",
+    "physical_address": "123 Main St, City, ST 12345",
+    "email_template": {
+      "subject": "Quick question about {business_name}",
+      "body": "Hi {business_name},\n\nI help local businesses like yours attract more customers through modern digital marketing.\n\nI noticed a few quick wins that could boost your online visibility. Would you be open to a brief call this week?\n\nBest regards,\n{from_name}\n\n---\nTo stop receiving these emails, reply STOP.\n{physical_address}"
+    },
+    "_comment": "Set Google Places API key with: python main.py auth keys"
+  }
+}

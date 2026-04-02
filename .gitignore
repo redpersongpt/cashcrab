@@ -1,0 +1,12 @@
+config.json
+client_secrets.json
+token.json
+tokens/
+*.pyc
+__pycache__/
+.env
+output/
+shorts/*.mp4
+venv/
+jobs.sqlite
+leads_*.csv
