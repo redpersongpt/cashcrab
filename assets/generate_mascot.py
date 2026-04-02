@@ -3,78 +3,92 @@
 
 from PIL import Image, ImageDraw
 
-SCALE = 16
+SIZE = 48
+SCALE = 12
+FINAL = SIZE * SCALE
 
-C = {
-    ".": None,
-    "R": (231, 76, 60),
-    "D": (192, 57, 43),
-    "O": (230, 126, 34),
-    "G": (241, 196, 15),
-    "Y": (247, 220, 111),
-    "K": (30, 30, 30),
-    "W": (255, 255, 255),
-    "E": (200, 200, 210),
-    "P": (185, 145, 20),
-    "S": (44, 62, 80),
-    "M": (243, 156, 18),
-    "B": (169, 50, 38),
-}
-
-# 34 wide x 24 tall
-# Symmetric around column 17
-GRID = [
-    ".....GG..................GG.....",  # 0  left coin   right coin
-    "....GYYG................GYYG...",  # 1
-    "....GPSG................GPSG...",  # 2  $ on coins
-    ".....GG..................GG....",  # 3
-    "....KRK................KRK.....",  # 4  claw tips
-    "...KRRK................KRRK....",  # 5
-    "...KRRRK..............KRRRK....",  # 6
-    "....KRRRK............KRRRK.....",  # 7
-    ".....KRRK..KKKKKK..KRRK.......",  # 8  arms reach body
-    "......KKK.KRRRRRRK.KKK........",  # 9
-    "..........KRRRRRRRRK...........",  # 10
-    ".........KRRRRRRRRRRK..........",  # 11
-    "........KRRRRRRRRRRRRK.........",  # 12
-    "........KRRWWRRRRWWRRK.........",  # 13 eyes
-    "........KRWKWRRRRWKWRK.........",  # 14 pupils
-    "........KRRWWRRRRWWRRK.........",  # 15
-    "........KRRRRRKKRRRRRK.........",  # 16 smile
-    ".......KRRRRRRRRRRRRRRK........",  # 17
-    ".......KRRRRRGGGGRRRRRRK.......",  # 18 gold belly
-    ".......KRRRRGMMMGRRRRRK........",  # 19
-    ".......KRRRRRGGGGRRRRRK........",  # 20
-    "........KRRRRRRRRRRRRK.........",  # 21
-    ".........KKRRRRRRRRKKK.........",  # 22
-    "..........KKKKKKKKKK...........",  # 23
-    ".........KK.KK..KK.KK.........",  # 24
-    "........KK..KK..KK..KK........",  # 25
-]
+RED = (220, 55, 45)
+DARK_RED = (165, 35, 30)
+LIGHT_RED = (245, 115, 95)
+GOLD = (241, 196, 15)
+YELLOW = (255, 240, 100)
+DARK_GOLD = (190, 150, 10)
+BLACK = (25, 25, 25)
+WHITE = (255, 255, 255)
+PUPIL = (25, 25, 40)
 
 
-def generate(output_path: str = "assets/cashcrab.png", scale: int = SCALE):
-    h = len(GRID)
-    w = max(len(row) for row in GRID)
+def draw_crab():
+    img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
 
-    img = Image.new("RGBA", (w * scale, h * scale), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+    cx, cy = 24, 26
 
-    for y, row in enumerate(GRID):
-        for x, ch in enumerate(row):
-            color = C.get(ch)
-            if color:
-                draw.rectangle(
-                    [x * scale, y * scale, (x + 1) * scale - 1, (y + 1) * scale - 1],
-                    fill=(*color, 255),
-                )
+    # === BODY (clean, no highlight) ===
+    d.ellipse([cx-13, cy-10, cx+13, cy+10], fill=RED, outline=BLACK)
 
-    img.save(output_path)
-    print(f"Mascot saved: {output_path} ({img.width}x{img.height})")
+    # === LEFT ARM + CLAW ===
+    d.line([(cx-11, cy-3), (cx-15, cy-11)], fill=RED, width=2)
+    # Pincer top
+    d.ellipse([cx-21, cy-17, cx-13, cy-11], fill=RED, outline=BLACK)
+    # Pincer bottom
+    d.ellipse([cx-21, cy-13, cx-13, cy-7], fill=RED, outline=BLACK)
+    # Coin
+    d.ellipse([cx-20, cy-23, cx-14, cy-17], fill=GOLD, outline=DARK_GOLD)
+    d.rectangle([cx-18, cy-21, cx-16, cy-19], fill=YELLOW)
 
-    small = img.resize((128, 128), Image.NEAREST)
+    # === RIGHT ARM + CLAW ===
+    d.line([(cx+11, cy-3), (cx+15, cy-11)], fill=RED, width=2)
+    # Pincer top
+    d.ellipse([cx+13, cy-17, cx+21, cy-11], fill=RED, outline=BLACK)
+    # Pincer bottom
+    d.ellipse([cx+13, cy-13, cx+21, cy-7], fill=RED, outline=BLACK)
+    # Coin
+    d.ellipse([cx+14, cy-23, cx+20, cy-17], fill=GOLD, outline=DARK_GOLD)
+    d.rectangle([cx+16, cy-21, cx+18, cy-19], fill=YELLOW)
+
+    # === EYES (closer together, rounder) ===
+    # Left eye
+    d.ellipse([cx-8, cy-7, cx-1, cy+1], fill=WHITE)
+    d.ellipse([cx-6, cy-5, cx-3, cy-1], fill=PUPIL)
+    d.point([cx-7, cy-6], fill=WHITE)  # shine
+
+    # Right eye
+    d.ellipse([cx+1, cy-7, cx+8, cy+1], fill=WHITE)
+    d.ellipse([cx+3, cy-5, cx+6, cy-1], fill=PUPIL)
+    d.point([cx+2, cy-6], fill=WHITE)
+
+    # === SMILE ===
+    d.line([(cx-3, cy+3), (cx-2, cy+4)], fill=BLACK)
+    d.line([(cx-1, cy+4), (cx+1, cy+4)], fill=BLACK)
+    d.line([(cx+2, cy+4), (cx+3, cy+3)], fill=BLACK)
+
+    # === BELLY COIN ===
+    d.ellipse([cx-3, cy+4, cx+3, cy+8], fill=GOLD, outline=DARK_GOLD)
+    d.rectangle([cx-1, cy+5, cx+1, cy+7], fill=YELLOW)
+
+    # === LEGS (3 pairs, solid dark red) ===
+    # Inner pair (straight down)
+    d.line([(cx-5, cy+9), (cx-7, cy+14)], fill=DARK_RED)
+    d.line([(cx+5, cy+9), (cx+7, cy+14)], fill=DARK_RED)
+    # Middle pair (angled)
+    d.line([(cx-9, cy+8), (cx-13, cy+12)], fill=DARK_RED)
+    d.line([(cx+9, cy+8), (cx+13, cy+12)], fill=DARK_RED)
+    # Outer pair (wide angle)
+    d.line([(cx-11, cy+6), (cx-16, cy+9)], fill=DARK_RED)
+    d.line([(cx+11, cy+6), (cx+16, cy+9)], fill=DARK_RED)
+
+    return img
+
+
+def generate(output_path: str = "assets/cashcrab.png"):
+    pixel_art = draw_crab()
+    final = pixel_art.resize((FINAL, FINAL), Image.NEAREST)
+    final.save(output_path)
+    print(f"Mascot: {output_path} ({FINAL}x{FINAL})")
+
+    small = pixel_art.resize((128, 128), Image.NEAREST)
     small.save(output_path.replace(".png", "_small.png"))
-
     return output_path
 
 
