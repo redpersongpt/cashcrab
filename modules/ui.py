@@ -1,6 +1,7 @@
 """Terminal UI helpers for the colorful CashCrab CLI."""
 
 import os
+from importlib.resources import as_file, files
 from pathlib import Path
 
 from rich.console import Console
@@ -39,11 +40,21 @@ MASCOT_ART = [
 
 def _mini_mascot():
     """Render a tiny version of the mascot inside the terminal banner."""
-    mascot_path = Path(__file__).resolve().parent.parent / "assets" / "cashcrab_48x48.png"
+    search_paths = [
+        Path(os.getenv("CASHCRAB_HOME", "")).expanduser() / "assets" / "cashcrab_48x48.png"
+        if os.getenv("CASHCRAB_HOME")
+        else None,
+        Path(__file__).resolve().parent.parent / "assets" / "cashcrab_48x48.png",
+    ]
     try:
         from PIL import Image
 
-        img = Image.open(mascot_path).convert("RGBA").resize((10, 10), Image.NEAREST)
+        mascot_path = next((path for path in search_paths if path and path.exists()), None)
+        if mascot_path is not None:
+            img = Image.open(mascot_path).convert("RGBA").resize((10, 10), Image.NEAREST)
+        else:
+            with as_file(files("modules.resources") / "cashcrab_48x48.png") as bundled_path:
+                img = Image.open(bundled_path).convert("RGBA").resize((10, 10), Image.NEAREST)
         lines = []
         for y in range(img.height):
             line = Text()
@@ -72,7 +83,7 @@ def banner():
         Text.from_markup("[brand]CASHCRAB[/brand]  [money]terminal autopilot[/money]"),
         Text.from_markup("[bold]Simple by default.[/bold] Run the app, pick a number, follow the prompts."),
         Text.from_markup("[dim]No command memory test. No hidden steps. 0 always goes back.[/dim]"),
-        Text.from_markup("[metal]Fast path:[/metal] Setup accounts -> pick a workflow -> press Enter."),
+        Text.from_markup("[metal]Fast path:[/metal] AI setup wizard -> connect what matters -> run a workflow."),
     )
 
     grid = Table.grid(expand=True, padding=(0, 2))

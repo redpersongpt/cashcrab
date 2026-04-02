@@ -4,7 +4,8 @@ set -euo pipefail
 REPO_OWNER="${REPO_OWNER:-redpersongpt}"
 REPO_NAME="${REPO_NAME:-cashcrab}"
 CASHCRAB_REF="${CASHCRAB_REF:-main}"
-INSTALL_ROOT="${CASHCRAB_HOME:-$HOME/.local/share/cashcrab}"
+APP_HOME="${CASHCRAB_HOME:-$HOME/.cashcrab}"
+INSTALL_ROOT="${CASHCRAB_INSTALL_ROOT:-$HOME/.local/share/cashcrab}"
 BIN_DIR="${CASHCRAB_BIN_DIR:-$HOME/.local/bin}"
 VENV_DIR="$INSTALL_ROOT/venv"
 SOURCE_DIR="$INSTALL_ROOT/source"
@@ -104,6 +105,31 @@ ensure_python() {
   have python3 || die "Python 3 install did not succeed."
 }
 
+ensure_node() {
+  if have node && have npm; then
+    return 0
+  fi
+
+  step "Node.js not found. Trying to install it for Qwen OAuth support"
+
+  if have brew; then
+    brew_install node
+  elif have apt-get; then
+    apt_install nodejs npm
+  elif have dnf; then
+    dnf_install nodejs npm
+  elif have yum; then
+    yum_install nodejs npm
+  elif have pacman; then
+    pacman_install nodejs npm
+  elif have zypper; then
+    zypper_install nodejs npm
+  else
+    warn "Node.js is missing and no supported package manager was found. CashCrab can still run with g4f, ollama, or OpenAI-compatible providers."
+    return 0
+  fi
+}
+
 ensure_tar() {
   if have tar; then
     return 0
@@ -178,7 +204,7 @@ install_cashcrab() {
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT
 
-  mkdir -p "$INSTALL_ROOT" "$BIN_DIR"
+  mkdir -p "$INSTALL_ROOT" "$BIN_DIR" "$APP_HOME" "$APP_HOME/assets"
 
   step "Downloading CashCrab"
   curl -fsSL "$ARCHIVE_URL" -o "$tmp_dir/cashcrab.tar.gz"
@@ -191,6 +217,20 @@ install_cashcrab() {
   mkdir -p "$SOURCE_DIR"
   cp -R "$extracted_dir"/. "$SOURCE_DIR"
 
+  if [ ! -f "$APP_HOME/config.example.json" ] && [ -f "$SOURCE_DIR/config.example.json" ]; then
+    cp "$SOURCE_DIR/config.example.json" "$APP_HOME/config.example.json"
+  fi
+
+  if [ ! -f "$APP_HOME/config.json" ] && [ -f "$SOURCE_DIR/config.example.json" ]; then
+    cp "$SOURCE_DIR/config.example.json" "$APP_HOME/config.json"
+  fi
+
+  if [ -f "$SOURCE_DIR/assets/cashcrab_48x48.png" ]; then
+    cp "$SOURCE_DIR/assets/cashcrab_48x48.png" "$APP_HOME/assets/cashcrab_48x48.png"
+  fi
+
+  mkdir -p "$APP_HOME/tokens" "$APP_HOME/output" "$APP_HOME/shorts"
+
   step "Creating private environment"
   python3 -m venv "$VENV_DIR"
 
@@ -198,11 +238,25 @@ install_cashcrab() {
   "$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel >/dev/null
   "$VENV_DIR/bin/pip" install "$SOURCE_DIR" >/dev/null
 
-  cat >"$BIN_DIR/cashcrab" <<EOF
+cat >"$BIN_DIR/cashcrab" <<EOF
 #!/usr/bin/env bash
+export CASHCRAB_HOME="$APP_HOME"
 exec "$VENV_DIR/bin/cashcrab" "\$@"
 EOF
   chmod +x "$BIN_DIR/cashcrab"
+
+  step "Checking Qwen brain"
+  if have qwen; then
+    say "Qwen Code CLI: found"
+  elif have npm; then
+    if npm install -g @qwen-code/qwen-code@latest >/dev/null 2>&1; then
+      say "Qwen Code CLI: installed"
+    else
+      warn "Qwen Code CLI could not be installed globally. CashCrab will fall back to npx for Qwen OAuth."
+    fi
+  else
+    warn "npm not found. Qwen OAuth will not be available until Node.js is installed."
+  fi
 
   if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     ensure_path_line
@@ -228,6 +282,9 @@ CashCrab is installed.
 Command:
   cashcrab
 
+Config home:
+  $APP_HOME
+
 If the command is not found right away:
   export PATH="\$HOME/.local/bin:\$PATH"
 
@@ -242,4 +299,5 @@ have curl || die "curl is required to run this installer."
 ensure_tar
 ensure_python
 ensure_venv_support
+ensure_node
 install_cashcrab

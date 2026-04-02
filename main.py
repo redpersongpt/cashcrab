@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import click
@@ -69,7 +70,7 @@ def _ask_float(prompt: str, default: float, minimum: float = 0.0, maximum: float
 
 
 def _show_status_dashboard():
-    from modules import analytics, auth, youtube
+    from modules import analytics, auth
 
     ui = _ui()
     ui.clear()
@@ -77,12 +78,77 @@ def _show_status_dashboard():
     ui.info("Status")
     ui.divider()
     auth.status()
-    ui.divider()
-    youtube.status()
     if hasattr(analytics, "dashboard"):
         ui.divider()
         analytics.dashboard()
     ui.pause()
+
+
+def _onboarding_wizard():
+    from modules import onboarding
+
+    _run_action("Starting the AI onboarding wizard...", onboarding.run_ai_wizard)
+
+
+def _repo_workspace_target() -> Path:
+    root = Path(__file__).resolve().parent
+    if not (root / ".git").exists():
+        raise RuntimeError("This command needs the CashCrab git repo root.")
+    return root
+
+
+def _home_workspace_target() -> Path:
+    from modules.config import ROOT
+
+    return ROOT / "codex-workspace"
+
+
+def _skills_agents_menu():
+    from modules import agentpacks
+
+    ui = _ui()
+
+    while True:
+        ui.clear()
+        ui.banner()
+        choice = ui.menu(
+            "Skill packs and sub-agents",
+            [
+                "Show skill categories",
+                "List all skill packs",
+                "Show one skill pack",
+                "List sub-agent roles",
+                "Show one sub-agent role",
+                "Write skill packs into this repo",
+                "Write skill packs into app home",
+            ],
+            back_label="Back to main menu",
+        )
+
+        if choice == 0:
+            return
+        if choice == 1:
+            _run_action("Loading skill categories...", agentpacks.print_skill_categories)
+        elif choice == 2:
+            _run_action("Loading all skill packs...", agentpacks.print_skill_list)
+        elif choice == 3:
+            slug = ui.ask("Skill slug", "cashcrab-youtube-title-lab")
+            _run_action(f"Loading {slug}...", lambda: agentpacks.print_skill_detail(slug))
+        elif choice == 4:
+            _run_action("Loading sub-agent roles...", agentpacks.print_agent_list)
+        elif choice == 5:
+            name = ui.ask("Agent role", "explorer")
+            _run_action(f"Loading {name}...", lambda: agentpacks.print_agent_detail(name))
+        elif choice == 6:
+            _run_action(
+                "Writing skill packs into this repo...",
+                lambda: agentpacks.sync_workspace(_repo_workspace_target()),
+            )
+        elif choice == 7:
+            _run_action(
+                "Writing skill packs into app home...",
+                lambda: agentpacks.sync_workspace(_home_workspace_target()),
+            )
 
 
 def _auth_menu():
@@ -96,10 +162,8 @@ def _auth_menu():
         choice = ui.menu(
             "Setup and account connections",
             [
-                "Connect YouTube",
+                "Connect Qwen OAuth (recommended brain)",
                 "Connect Twitter / X",
-                "Connect TikTok",
-                "Connect Instagram",
                 "Save keys and webhooks",
                 "Show setup status",
                 "Remove a saved login",
@@ -110,98 +174,33 @@ def _auth_menu():
         if choice == 0:
             return
         if choice == 1:
-            _run_action("Connecting YouTube...", auth.youtube_login)
+            _run_action("Connecting Qwen OAuth...", auth.qwen_login)
         elif choice == 2:
             _run_action("Connecting Twitter / X...", auth.twitter_login)
         elif choice == 3:
-            from modules import tiktok
-
-            _run_action("Connecting TikTok...", tiktok.login)
-        elif choice == 4:
-            from modules import instagram
-
-            _run_action("Connecting Instagram...", instagram.login)
-        elif choice == 5:
             _run_action("Saving API keys...", auth.setup_api_keys)
-        elif choice == 6:
-            _run_action("Loading status...", auth.status)
-        elif choice == 7:
-            service_choice = None
-
-            def revoke_prompt():
-                nonlocal service_choice
-                local_ui = _ui()
-                service_choice = local_ui.menu(
-                    "Which saved login should be removed?",
-                    ["YouTube", "Twitter / X", "TikTok", "Instagram"],
-                    back_label="Cancel",
-                )
-                if service_choice == 1:
-                    auth.revoke("youtube")
-                elif service_choice == 2:
-                    auth.revoke("twitter")
-                elif service_choice == 3:
-                    auth.revoke("tiktok")
-                elif service_choice == 4:
-                    auth.revoke("instagram")
-
-            _run_action("Removing saved login...", revoke_prompt)
-
-
-def _youtube_menu():
-    from modules import auth, video, youtube
-
-    ui = _ui()
-
-    while True:
-        ui.clear()
-        ui.banner()
-        choice = ui.menu(
-            "YouTube Shorts",
-            [
-                "Make one Short and upload it",
-                "Make one Short without uploading",
-                "Upload any pending Shorts",
-                "Show Shorts status",
-                "Connect YouTube",
-            ],
-            back_label="Back to main menu",
-        )
-
-        if choice == 0:
-            return
-        if choice == 1:
-            topic = ui.ask_or_skip("Topic")
-            crosspost_tiktok = ui.confirm("Also cross-post to TikTok if configured?", default=False)
-            crosspost_instagram = ui.confirm("Also cross-post to Instagram if configured?", default=False)
-
-            def generate_and_upload():
-                from modules import crosspost
-
-                result = video.generate_short(topic)
-                youtube.upload(result["video_path"], result["title"], result["description"])
-                crosspost.publish_short(
-                    result["video_path"],
-                    result["title"],
-                    result["description"],
-                    tiktok_enabled=crosspost_tiktok,
-                    instagram_enabled=crosspost_instagram,
-                )
-
-            _run_action("Making and uploading a YouTube Short...", generate_and_upload)
-        elif choice == 2:
-            topic = ui.ask_or_skip("Topic")
-            _run_action("Making a YouTube Short...", lambda: video.generate_short(topic))
-        elif choice == 3:
-            _run_action("Uploading pending Shorts...", youtube.upload_pending)
         elif choice == 4:
-            _run_action("Loading Shorts status...", youtube.status)
+            _run_action("Loading status...", auth.status)
         elif choice == 5:
-            _run_action("Connecting YouTube...", auth.youtube_login)
+            confirm = _ui().confirm("Remove saved Twitter / X login?", default=False)
+            if confirm:
+                _run_action("Removing saved login...", lambda: auth.revoke("twitter"))
 
 
-def _tiktok_menu():
-    from modules import tiktok
+def _voice_draft(topic: str):
+    from modules import x_engage, twitter
+
+    text = x_engage.generate_in_voice(topic)
+    score = twitter.score_content(text)
+    ui = _ui()
+    ui.info(f"Score: {score['score']}/100 ({score['tier']})")
+    ui.info(f"Draft: {text}")
+    if ui.confirm("Queue this tweet?", default=True):
+        twitter.queue_tweet(text, tweet_type="organic", workflow="voice", topic=topic, source="voice-gen")
+
+
+def _x_engage_menu():
+    from modules import x_engage
 
     ui = _ui()
 
@@ -209,65 +208,77 @@ def _tiktok_menu():
         ui.clear()
         ui.banner()
         choice = ui.menu(
-            "TikTok",
+            "X Engagement Autopilot",
             [
-                "Upload a specific MP4",
-                "Upload the newest Short",
-                "Connect TikTok",
+                "Analyze my voice (build style profile)",
+                "Generate tweet in my voice",
+                "Search & engage (like + reply)",
+                "Run Thought Leader agent",
+                "Find engagement targets",
+                "Post a thread",
+                "Score a draft tweet",
+                "Show engagement stats",
             ],
-            back_label="Back to main menu",
+            back_label="Back to X menu",
         )
 
         if choice == 0:
             return
         if choice == 1:
-            file_path = ui.ask("MP4 file path")
-            title = ui.ask_or_skip("Title") or Path(file_path).stem.replace("_", " ").replace("-", " ").title()
-            _run_action("Uploading to TikTok...", lambda: tiktok.upload(file_path, title))
+            count = _ask_int("How many tweets to analyze?", 50, minimum=10)
+            _run_action("Analyzing your voice...", lambda: x_engage.analyze_voice(count))
         elif choice == 2:
-            title = ui.ask_or_skip("Title")
-            _run_action("Uploading the newest Short to TikTok...", lambda: tiktok.upload_latest(title=title))
+            topic = ui.ask("Topic", "AI automation")
+            _run_action("Generating in your voice...", lambda: _voice_draft(topic))
         elif choice == 3:
-            _run_action("Connecting TikTok...", tiktok.login)
-
-
-def _instagram_menu():
-    from modules import instagram
-
-    ui = _ui()
-
-    while True:
-        ui.clear()
-        ui.banner()
-        choice = ui.menu(
-            "Instagram Reels",
-            [
-                "Upload a specific MP4 as a Reel",
-                "Upload the newest Short as a Reel",
-                "Connect Instagram",
-            ],
-            back_label="Back to main menu",
-        )
-
-        if choice == 0:
-            return
-        if choice == 1:
-            file_path = ui.ask("MP4 file path")
-            caption = ui.ask_or_skip("Caption") or Path(file_path).stem.replace("_", " ").replace("-", " ")
-            public_url = ui.ask_or_skip("Public video URL")
+            raw_kw = ui.ask("Keywords (comma-separated)", "AI, automation, tech")
+            keywords = [k.strip() for k in raw_kw.split(",") if k.strip()]
+            max_likes = _ask_int("Max likes?", 10)
+            max_replies = _ask_int("Max replies?", 3)
             _run_action(
-                "Publishing to Instagram Reels...",
-                lambda: instagram.upload(file_path, caption=caption, public_url=public_url),
+                "Searching and engaging...",
+                lambda: x_engage.search_and_engage(keywords, max_likes=max_likes, max_replies=max_replies),
             )
-        elif choice == 2:
-            caption = ui.ask("Caption")
-            public_url = ui.ask_or_skip("Public video URL")
+        elif choice == 4:
+            raw_kw = ui.ask("Keywords (comma-separated)", "AI, automation, tech")
+            keywords = [k.strip() for k in raw_kw.split(",") if k.strip()]
+            duration = _ask_int("Duration (minutes)?", 30, minimum=5)
             _run_action(
-                "Publishing the newest Short to Instagram Reels...",
-                lambda: instagram.upload_latest(caption=caption, public_url=public_url),
+                "Running Thought Leader agent...",
+                lambda: x_engage.thought_leader_cycle(keywords=keywords, duration_minutes=duration),
             )
-        elif choice == 3:
-            _run_action("Connecting Instagram...", instagram.login)
+        elif choice == 5:
+            raw_kw = ui.ask("Keywords (comma-separated)", "AI, automation")
+            keywords = [k.strip() for k in raw_kw.split(",") if k.strip()]
+            _run_action("Finding targets...", lambda: x_engage.find_targets(keywords))
+        elif choice == 6:
+            from modules import twitter
+
+            topic = ui.ask("Thread topic", "AI automation tips")
+            count = _ask_int("How many tweets in thread?", 4, minimum=2)
+
+            def thread_action():
+                texts = twitter.generate_thread(topic, count)
+                for i, t in enumerate(texts, 1):
+                    score = twitter.score_content(t)
+                    ui.info(f"  {i}. [{score['tier']}:{score['score']}] {t}")
+                if ui.confirm("Post this thread now?", default=True):
+                    twitter.post_thread(texts)
+                else:
+                    twitter.queue_thread(topic, count)
+
+            _run_action("Generating thread...", thread_action)
+        elif choice == 7:
+            from modules import twitter
+
+            text = ui.ask("Tweet text to score")
+            result = twitter.score_content(text)
+            ui.info(f"Score: {result['score']}/100 ({result['tier']})")
+            for r in result["reasons"]:
+                ui.info(f"  {r}")
+            ui.pause()
+        elif choice == 8:
+            _run_action("Loading engagement stats...", x_engage.engagement_summary)
 
 
 def _twitter_menu():
@@ -281,10 +292,16 @@ def _twitter_menu():
         choice = ui.menu(
             "Twitter / X",
             [
+                "X Engagement Autopilot",
+                "Build an X workflow queue",
+                "Show queued X posts",
+                "Post queued X posts now",
+                "Draft one post and save it to the queue",
                 "Post a mixed batch",
                 "Post one helpful tweet",
                 "Post one affiliate tweet",
                 "Post exact text",
+                "Export X queue as Markdown",
                 "Connect Twitter / X",
             ],
             back_label="Back to main menu",
@@ -293,71 +310,61 @@ def _twitter_menu():
         if choice == 0:
             return
         if choice == 1:
+            _x_engage_menu()
+        elif choice == 2:
+            preset = ui.ask("Workflow preset", "authority")
+            topic = ui.ask("Topic", "AI workflows")
+            count = _ask_int("How many posts?", 3)
+            spacing = _ask_int("Minutes between queued posts?", 45)
+            _run_action(
+                "Building your X workflow queue...",
+                lambda: twitter.build_workflow_queue(
+                    preset=preset,
+                    topic=topic,
+                    count=count,
+                    spacing_minutes=spacing,
+                ),
+            )
+        elif choice == 3:
+            _run_action("Loading the X queue...", twitter.show_queue)
+        elif choice == 4:
+            limit = _ask_int("How many queued posts should go out now?", 1)
+            include_scheduled = ui.confirm("Ignore the scheduled times and force-send them?", default=False)
+            _run_action(
+                "Posting queued X posts...",
+                lambda: twitter.post_queued(limit=limit, include_scheduled=include_scheduled),
+            )
+        elif choice == 5:
+            topic = ui.ask_or_skip("Topic")
+            tweet_type = ui.ask("Post type", "organic").strip().lower() or "organic"
+            angle = ui.ask_or_skip("Angle or style note") or ""
+
+            def draft_and_queue():
+                text = twitter.draft_post(topic=topic, tweet_type=tweet_type, angle=angle)
+                twitter.queue_tweet(text, tweet_type=tweet_type, workflow="manual", topic=topic or "")
+                ui.info(text)
+
+            _run_action("Drafting and queuing an X post...", draft_and_queue)
+        elif choice == 6:
             count = _ask_int("How many tweets?", 1)
             ratio = _ask_float("Affiliate ratio", 0.3)
             _run_action(
                 "Posting tweets...",
                 lambda: twitter.run_batch(count=count, affiliate_ratio=ratio),
             )
-        elif choice == 2:
+        elif choice == 7:
             topic = ui.ask_or_skip("Topic")
             _run_action("Posting a helpful tweet...", lambda: twitter.post_organic(topic))
-        elif choice == 3:
+        elif choice == 8:
             _run_action("Posting an affiliate tweet...", twitter.post_affiliate)
-        elif choice == 4:
+        elif choice == 9:
             text = ui.ask("Tweet text")
             _run_action("Posting your tweet...", lambda: twitter.post_tweet(text))
-        elif choice == 5:
+        elif choice == 10:
+            output = ui.ask("Output file", "x-queue.md")
+            _run_action("Exporting the X queue...", lambda: twitter.export_queue(output))
+        elif choice == 11:
             _run_action("Connecting Twitter / X...", auth.twitter_login)
-
-
-def _leads_menu():
-    from modules import auth, leads as leads_mod
-
-    ui = _ui()
-
-    while True:
-        ui.clear()
-        ui.banner()
-        choice = ui.menu(
-            "Lead finder and outreach",
-            [
-                "Find leads and save them to CSV",
-                "Preview outreach emails",
-                "Send outreach emails",
-                "Save Google Places key",
-            ],
-            back_label="Back to main menu",
-        )
-
-        if choice == 0:
-            return
-        if choice == 1:
-            query = ui.ask_or_skip("Business type")
-            location = ui.ask_or_skip("City or area")
-            output = ui.ask_or_skip("CSV file path")
-
-            def find_and_export():
-                results = leads_mod.find_leads(query, location)
-                leads_mod.export_csv(results, output)
-
-            _run_action("Finding leads...", find_and_export)
-        elif choice == 2:
-            csv_path = ui.ask("CSV file path", str(Path("leads.csv")))
-            _run_action(
-                "Previewing outreach emails...",
-                lambda: leads_mod.send_outreach(csv_path=csv_path, dry_run=True),
-            )
-        elif choice == 3:
-            csv_path = ui.ask("CSV file path", str(Path("leads.csv")))
-            confirm = ui.confirm("Send real emails now?", default=False)
-            if confirm:
-                _run_action(
-                    "Sending outreach emails...",
-                    lambda: leads_mod.send_outreach(csv_path=csv_path, dry_run=False),
-                )
-        elif choice == 4:
-            _run_action("Saving API keys...", auth.setup_api_keys)
 
 
 def _automation_menu():
@@ -371,7 +378,7 @@ def _automation_menu():
         choice = ui.menu(
             "Automation",
             [
-                "Run everything once",
+                "Run X autopilot once",
                 "Start the always-on scheduler",
             ],
             back_label="Back to main menu",
@@ -380,21 +387,18 @@ def _automation_menu():
         if choice == 0:
             return
         if choice == 1:
-            shorts = _ask_int("How many Shorts?", 1)
             tweets = _ask_int("How many tweets?", 3)
-            leads_enabled = ui.confirm("Also find leads?", default=False)
-            crosspost_tiktok = ui.confirm("Also cross-post Shorts to TikTok?", default=False)
-            crosspost_instagram = ui.confirm("Also cross-post Shorts to Instagram?", default=False)
-            _run_action(
-                "Running the full autopilot flow...",
-                lambda: auto.callback(
-                    shorts=shorts,
-                    tweets=tweets,
-                    find_leads=leads_enabled,
-                    crosspost_tiktok=crosspost_tiktok,
-                    crosspost_instagram=crosspost_instagram,
-                ),
-            )
+            ratio = _ask_float("Affiliate ratio", 0.3)
+            engage = ui.confirm("Also run engagement cycle?", default=True)
+
+            def run_once():
+                from modules import twitter, x_engage
+
+                twitter.run_batch(count=tweets, affiliate_ratio=ratio)
+                if engage:
+                    x_engage.thought_leader_cycle(duration_minutes=30)
+
+            _run_action("Running X autopilot...", run_once)
         elif choice == 2:
             _run_action("Starting the scheduler...", scheduler.start)
 
@@ -408,13 +412,11 @@ def _interactive_menu():
         choice = ui.menu(
             "Main menu",
             [
-                "Setup accounts and API keys",
-                "YouTube Shorts",
                 "Twitter / X",
-                "TikTok",
-                "Instagram Reels",
-                "Lead finder and outreach",
                 "Automation",
+                "Setup accounts and API keys",
+                "AI setup wizard",
+                "Skill packs and sub-agents",
                 "Status dashboard",
             ],
             back_label="Exit CashCrab",
@@ -424,29 +426,57 @@ def _interactive_menu():
             ui.clear()
             return
         if choice == 1:
-            _auth_menu()
-        elif choice == 2:
-            _youtube_menu()
-        elif choice == 3:
             _twitter_menu()
-        elif choice == 4:
-            _tiktok_menu()
-        elif choice == 5:
-            _instagram_menu()
-        elif choice == 6:
-            _leads_menu()
-        elif choice == 7:
+        elif choice == 2:
             _automation_menu()
-        elif choice == 8:
+        elif choice == 3:
+            _auth_menu()
+        elif choice == 4:
+            _onboarding_wizard()
+        elif choice == 5:
+            _skills_agents_menu()
+        elif choice == 6:
             _show_status_dashboard()
 
 
 @click.group(invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.pass_context
 def cli(ctx: click.Context):
-    """CashCrab - terminal money tools with a beginner-friendly menu."""
+    """CashCrab - X engagement autopilot from the terminal."""
     if ctx.invoked_subcommand is None:
         _interactive_menu()
+
+
+@cli.command()
+def onboard():
+    """Run the AI-guided setup wizard."""
+    from modules import onboarding
+
+    onboarding.run_ai_wizard()
+
+
+@cli.group()
+def owner():
+    """Owner-side backend and proxy helpers."""
+    pass
+
+
+@owner.command("serve")
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8787, type=int, show_default=True)
+def owner_serve(host, port):
+    """Run the owner backend/proxy API."""
+    from modules import owner_api
+
+    owner_api.run_server(host=host, port=port)
+
+
+@owner.command("status")
+def owner_status():
+    """Show local owner backend capability status from environment."""
+    from modules import owner_api
+
+    click.echo(json.dumps(owner_api.status_payload(), indent=2))
 
 
 @cli.group()
@@ -456,11 +486,11 @@ def auth():
 
 
 @auth.command()
-def youtube():
-    """Link your YouTube account (OAuth2 browser flow)."""
-    from modules.auth import youtube_login
+def qwen():
+    """Link Qwen Code OAuth and set it as the recommended LLM."""
+    from modules.auth import qwen_login
 
-    youtube_login()
+    qwen_login()
 
 
 @auth.command()
@@ -472,24 +502,8 @@ def twitter():
 
 
 @auth.command()
-def tiktok():
-    """Link your TikTok account."""
-    from modules import tiktok
-
-    tiktok.login()
-
-
-@auth.command()
-def instagram():
-    """Link your Instagram / Meta account."""
-    from modules import instagram
-
-    instagram.login()
-
-
-@auth.command()
 def keys():
-    """Set API keys for Pexels and Google Places."""
+    """Set API keys."""
     from modules.auth import setup_api_keys
 
     setup_api_keys()
@@ -504,7 +518,7 @@ def status():
 
 
 @auth.command()
-@click.argument("service", type=click.Choice(["youtube", "twitter", "tiktok", "instagram"]))
+@click.argument("service", type=click.Choice(["twitter"]))
 def revoke(service):
     """Remove stored tokens for a service."""
     from modules.auth import revoke as auth_revoke
@@ -513,54 +527,8 @@ def revoke(service):
 
 
 @cli.group()
-def yt():
-    """YouTube Shorts automation."""
-    pass
-
-
-@yt.command()
-@click.option("--topic", default=None, help="Video topic (auto-generated if empty)")
-@click.option("--upload/--no-upload", default=True, help="Upload after generating")
-@click.option("--crosspost-tiktok/--no-crosspost-tiktok", default=None, help="Also cross-post to TikTok")
-@click.option("--crosspost-instagram/--no-crosspost-instagram", default=None, help="Also cross-post to Instagram")
-@click.option("--instagram-public-url", default=None, help="Public MP4 URL for Instagram publishing")
-def generate(topic, upload, crosspost_tiktok, crosspost_instagram, instagram_public_url):
-    """Generate a YouTube Short."""
-    from modules import crosspost, video, youtube
-
-    result = video.generate_short(topic)
-
-    if upload:
-        youtube.upload(result["video_path"], result["title"], result["description"])
-        crosspost.publish_short(
-            result["video_path"],
-            result["title"],
-            result["description"],
-            tiktok_enabled=crosspost_tiktok,
-            instagram_enabled=crosspost_instagram,
-            instagram_public_url=instagram_public_url,
-        )
-
-
-@yt.command()
-def upload_all():
-    """Upload all pending videos from the Shorts folder."""
-    from modules import youtube
-
-    youtube.upload_pending()
-
-
-@yt.command("status")
-def yt_status():
-    """Show Shorts upload status."""
-    from modules import youtube
-
-    youtube.status()
-
-
-@cli.group()
 def tw():
-    """Twitter affiliate bot."""
+    """Twitter / X queue, workflows, posting, and engagement."""
     pass
 
 
@@ -600,147 +568,268 @@ def affiliate():
     twitter.post_affiliate()
 
 
-@cli.group()
-def tt():
-    """TikTok uploads."""
-    pass
+@tw.command("draft")
+@click.option("--topic", default=None, help="Topic or idea for the post")
+@click.option("--type", "tweet_type", default="organic", type=click.Choice(["organic", "affiliate"]))
+@click.option("--angle", default="", help="Optional angle or style note")
+@click.option("--queue/--no-queue", "save_to_queue", default=True, help="Save the draft into the X queue")
+def tw_draft(topic, tweet_type, angle, save_to_queue):
+    """Draft one X post, optionally saving it to the queue."""
+    from modules import twitter
+
+    text = twitter.draft_post(topic=topic, tweet_type=tweet_type, angle=angle)
+    if save_to_queue:
+        twitter.queue_tweet(text, tweet_type=tweet_type, workflow="manual", topic=topic or "")
+    click.echo(text)
 
 
-@tt.command()
-@click.argument("file_path")
-@click.option("--title", required=True, help="TikTok caption/title")
-def upload(file_path, title):
-    """Upload a specific MP4 to TikTok."""
-    from modules import tiktok
+@tw.command("queue")
+@click.option("--preset", default="authority", help="Workflow preset")
+@click.option("--topic", required=True, help="What the workflow is about")
+@click.option("--count", default=3, help="How many posts to create")
+@click.option("--spacing-minutes", default=45, help="Minutes between queued posts")
+def tw_queue(preset, topic, count, spacing_minutes):
+    """Build a queue of X posts from a workflow preset."""
+    from modules import twitter
 
-    tiktok.upload(file_path, title)
-
-
-@tt.command("upload-latest")
-@click.option("--title", default=None, help="Optional title override")
-def tt_upload_latest(title):
-    """Upload the newest generated Short to TikTok."""
-    from modules import tiktok
-
-    tiktok.upload_latest(title=title)
+    twitter.build_workflow_queue(
+        preset=preset,
+        topic=topic,
+        count=count,
+        spacing_minutes=spacing_minutes,
+    )
 
 
-@cli.group()
-def ig():
-    """Instagram Reels publishing."""
-    pass
+@tw.command("queue-list")
+@click.option("--all", "show_all", is_flag=True, help="Show posted and failed items too")
+def tw_queue_list(show_all):
+    """Show the local X queue."""
+    from modules import twitter
+
+    twitter.show_queue(status=None if show_all else "queued")
 
 
-@ig.command("upload")
-@click.argument("file_path")
-@click.option("--caption", required=True, help="Instagram caption")
-@click.option("--public-url", default=None, help="Public MP4 URL for Meta to fetch")
-def upload_reel(file_path, caption, public_url):
-    """Publish a specific MP4 as an Instagram Reel."""
-    from modules import instagram
+@tw.command("post-queued")
+@click.option("--limit", default=1, help="How many queued posts to send")
+@click.option("--include-scheduled", is_flag=True, help="Ignore schedule times and send anyway")
+def tw_post_queued(limit, include_scheduled):
+    """Send queued X posts."""
+    from modules import twitter
 
-    instagram.upload(file_path, caption=caption, public_url=public_url)
-
-
-@ig.command("upload-latest")
-@click.option("--caption", required=True, help="Instagram caption")
-@click.option("--public-url", default=None, help="Public MP4 URL for Meta to fetch")
-def ig_upload_latest(caption, public_url):
-    """Publish the newest generated Short as an Instagram Reel."""
-    from modules import instagram
-
-    instagram.upload_latest(caption=caption, public_url=public_url)
+    twitter.post_queued(limit=limit, include_scheduled=include_scheduled)
 
 
-@cli.group()
-def leads():
-    """Local business lead finder and outreach."""
-    pass
+@tw.command("export-queue")
+@click.option("--output", default="x-queue.md", help="Markdown export path")
+def tw_export_queue(output):
+    """Export the local X queue as Markdown."""
+    from modules import twitter
+
+    twitter.export_queue(output)
 
 
-@leads.command()
-@click.option("--query", default=None, help="Business type (for example: plumber)")
-@click.option("--location", default=None, help="City or area to search")
-@click.option("--output", default=None, help="CSV output path")
-def find(query, location, output):
-    """Find local businesses via Google Places."""
-    from modules import leads as leads_mod
+@tw.command("voice-analyze")
+@click.option("--count", default=50, help="Number of tweets to analyze")
+def tw_voice_analyze(count):
+    """Analyze your writing voice from recent tweets."""
+    from modules import x_engage
 
-    results = leads_mod.find_leads(query, location)
-    leads_mod.export_csv(results, output)
+    x_engage.analyze_voice(count)
 
 
-@leads.command()
-@click.option("--csv", "csv_path", required=True, help="Path to leads CSV")
-@click.option("--dry-run/--send", default=True, help="Preview without sending")
-def outreach(csv_path, dry_run):
-    """Send cold outreach emails to leads."""
-    from modules import leads as leads_mod
+@tw.command("voice-post")
+@click.option("--topic", required=True, help="Topic to write about")
+@click.option("--post/--no-post", default=False, help="Post immediately instead of queuing")
+def tw_voice_post(topic, post):
+    """Generate and post a tweet matching your voice profile."""
+    from modules import x_engage, twitter
 
-    leads_mod.send_outreach(csv_path=csv_path, dry_run=dry_run)
+    text = x_engage.generate_in_voice(topic)
+    score = twitter.score_content(text)
+    click.echo(f"[{score['tier']}:{score['score']}] {text}")
+    if post:
+        twitter.post_tweet(text)
+    else:
+        twitter.queue_tweet(text, tweet_type="organic", workflow="voice", topic=topic, source="voice-gen")
+        click.echo("Queued.")
 
 
-@leads.command("campaign-update")
-@click.argument("campaign_id")
-@click.option("--opened", type=int, default=None, help="Set opened count")
-@click.option("--replied", type=int, default=None, help="Set replied count")
-def campaign_update(campaign_id, opened, replied):
-    """Update lead campaign open/reply counts for analytics."""
-    from modules import analytics
+@tw.command("engage")
+@click.option("--keywords", required=True, help="Comma-separated keywords to search")
+@click.option("--max-likes", default=10, help="Max likes per run")
+@click.option("--max-replies", default=3, help="Max AI replies per run")
+def tw_engage(keywords, max_likes, max_replies):
+    """Search tweets by keywords and auto-engage (like + AI reply)."""
+    from modules import x_engage
 
-    analytics.update_lead_campaign(campaign_id, opened=opened, replied=replied)
-    click.echo(f"Updated campaign: {campaign_id}")
+    kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+    x_engage.search_and_engage(kw_list, max_likes=max_likes, max_replies=max_replies)
+
+
+@tw.command("autopilot")
+@click.option("--keywords", default=None, help="Comma-separated keywords (uses config if empty)")
+@click.option("--duration", default=30, help="Run duration in minutes")
+@click.option("--max-posts", default=2, help="Max original posts per cycle")
+@click.option("--max-likes", default=15, help="Max likes per cycle")
+@click.option("--max-replies", default=5, help="Max replies per cycle")
+def tw_autopilot(keywords, duration, max_posts, max_likes, max_replies):
+    """Run the Thought Leader agent (autonomous engagement loop)."""
+    from modules import x_engage
+
+    kw_list = None
+    if keywords:
+        kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+    x_engage.thought_leader_cycle(
+        keywords=kw_list,
+        duration_minutes=duration,
+        max_posts=max_posts,
+        max_likes=max_likes,
+        max_replies=max_replies,
+    )
+
+
+@tw.command("targets")
+@click.option("--keywords", required=True, help="Comma-separated keywords")
+@click.option("--min-followers", default=500, help="Min follower count")
+@click.option("--max-followers", default=50000, help="Max follower count")
+@click.option("--limit", default=20, help="Max targets to return")
+def tw_targets(keywords, min_followers, max_followers, limit):
+    """Find accounts worth engaging with."""
+    from modules import x_engage
+
+    kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+    x_engage.find_targets(kw_list, min_followers=min_followers, max_followers=max_followers, limit=limit)
+
+
+@tw.command("thread")
+@click.option("--topic", required=True, help="Thread topic")
+@click.option("--count", default=4, help="Number of tweets in thread")
+@click.option("--post/--no-post", "post_now", default=False, help="Post immediately")
+def tw_thread(topic, count, post_now):
+    """Generate and post/queue a thread."""
+    from modules import twitter
+
+    texts = twitter.generate_thread(topic, count)
+    for i, t in enumerate(texts, 1):
+        score = twitter.score_content(t)
+        click.echo(f"  {i}. [{score['tier']}:{score['score']}] {t}")
+    if post_now:
+        twitter.post_thread(texts)
+    else:
+        twitter.queue_thread(topic, count)
+
+
+@tw.command("score")
+@click.argument("text")
+def tw_score(text):
+    """Score a tweet draft (0-100) without posting."""
+    from modules import twitter
+
+    result = twitter.score_content(text)
+    click.echo(f"Score: {result['score']}/100 ({result['tier']})")
+    for r in result["reasons"]:
+        click.echo(f"  {r}")
+
+
+@tw.command("engage-stats")
+def tw_engage_stats():
+    """Show engagement activity summary."""
+    from modules import x_engage
+
+    x_engage.engagement_summary()
+
+
+@cli.group(invoke_without_command=True)
+@click.pass_context
+def skills(ctx):
+    """Browse or sync CashCrab skill packs."""
+    from modules import agentpacks
+
+    if ctx.invoked_subcommand is None:
+        agentpacks.print_skill_categories()
+
+
+@skills.command("list")
+@click.option("--category", default=None, help="Optional skill category key")
+def skills_list(category):
+    """List available skill packs."""
+    from modules import agentpacks
+
+    agentpacks.print_skill_list(category)
+
+
+@skills.command("show")
+@click.argument("slug")
+def skills_show(slug):
+    """Show one skill pack."""
+    from modules import agentpacks
+
+    agentpacks.print_skill_detail(slug)
+
+
+@skills.command("sync")
+@click.option("--target", type=click.Choice(["repo", "home"]), default="repo", show_default=True)
+def skills_sync(target):
+    """Write skill packs and agent roles into a workspace."""
+    from modules import agentpacks
+
+    workspace = _repo_workspace_target() if target == "repo" else _home_workspace_target()
+    result = agentpacks.sync_workspace(workspace)
+    click.echo(f"Synced {result['skills']} skills and {result['agents']} agents into {workspace}")
+
+
+@cli.group(invoke_without_command=True)
+@click.pass_context
+def agents(ctx):
+    """Browse CashCrab sub-agent roles."""
+    from modules import agentpacks
+
+    if ctx.invoked_subcommand is None:
+        agentpacks.print_agent_list()
+
+
+@agents.command("show")
+@click.argument("name")
+def agents_show(name):
+    """Show one sub-agent role."""
+    from modules import agentpacks
+
+    agentpacks.print_agent_detail(name)
 
 
 @cli.command()
 def schedule():
-    """Run the scheduler (YouTube + Twitter on autopilot)."""
+    """Run the scheduler (X posting + engagement on autopilot)."""
     from modules import scheduler
 
     scheduler.start()
 
 
 @cli.command()
-@click.option("--shorts", default=1, help="Number of Shorts to generate and upload")
 @click.option("--tweets", default=3, help="Number of tweets to post")
-@click.option("--find-leads/--no-leads", default=False, help="Also run lead finder")
-@click.option("--crosspost-tiktok/--no-crosspost-tiktok", default=None, help="Also cross-post Shorts to TikTok")
-@click.option("--crosspost-instagram/--no-crosspost-instagram", default=None, help="Also cross-post Shorts to Instagram")
-def auto(shorts, tweets, find_leads, crosspost_tiktok, crosspost_instagram):
-    """Run everything once: Shorts, tweets, and optionally leads."""
-    from modules import leads as leads_mod
-    from modules import crosspost, twitter, video, youtube
+@click.option("--affiliate-ratio", default=0.3, help="Affiliate vs organic ratio")
+@click.option("--engage/--no-engage", default=True, help="Also run engagement cycle")
+@click.option("--engage-duration", default=30, help="Engagement cycle duration in minutes")
+def auto(tweets, affiliate_ratio, engage, engage_duration):
+    """Run X autopilot once: tweets + engagement cycle."""
+    from modules import twitter, x_engage
 
-    for _ in range(shorts):
-        result = video.generate_short()
-        youtube.upload(result["video_path"], result["title"], result["description"])
-        crosspost.publish_short(
-            result["video_path"],
-            result["title"],
-            result["description"],
-            tiktok_enabled=crosspost_tiktok,
-            instagram_enabled=crosspost_instagram,
-        )
-
-    twitter.run_batch(tweets, affiliate_ratio=0.3)
-
-    if find_leads:
-        results = leads_mod.find_leads()
-        leads_mod.export_csv(results)
+    twitter.run_batch(tweets, affiliate_ratio=affiliate_ratio)
+    if engage:
+        x_engage.thought_leader_cycle(duration_minutes=engage_duration)
 
 
 @cli.command()
 @click.option("--export", "export_path", default=None, help="Optional CSV export path")
 def dashboard(export_path):
     """Show the status dashboard."""
-    from modules import analytics, auth, youtube
+    from modules import analytics, auth
 
     if export_path:
         path = analytics.export_csv(export_path)
         click.echo(f"Exported analytics to {path}")
 
     auth.status()
-    youtube.status()
     analytics.dashboard()
 
 

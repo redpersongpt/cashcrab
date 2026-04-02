@@ -5,47 +5,41 @@
 <h1 align="center">CashCrab</h1>
 
 <p align="center">
-  <strong>Your claws on autopilot.</strong><br>
-  YouTube Shorts, Twitter affiliate posts, and local lead gen from one terminal app.
+  <strong>X engagement autopilot.</strong><br>
+  Voice-matched posting, smart engagement, thread generation, and autonomous growth from your terminal.
 </p>
 
 <p align="center">
+  <a href="#how-it-works">How it works</a> &bull;
   <a href="#quickstart">Quickstart</a> &bull;
-  <a href="#features">Features</a> &bull;
-  <a href="#vs-moneyprinterv2">vs MoneyPrinterV2</a> &bull;
   <a href="#commands">Commands</a> &bull;
-  <a href="#architecture">Architecture</a>
+  <a href="#configuration">Configuration</a>
 </p>
 
 ---
 
-## Why CashCrab?
+## How it works
 
-Most money-tool repos are the same mess:
+One command. Your X account grows on autopilot.
 
-- Selenium glued to random websites until one UI change kills it
-- ten setup steps before you can test one thing
-- docs written like a generic AI landing page
+```bash
+cashcrab tw autopilot --keywords "AI,automation,tech" --duration 60
+```
 
-CashCrab is supposed to be simpler:
+Every 60 minutes the scheduler runs a cycle:
 
-- **run one install command**
-- **get a real `cashcrab` command in your terminal**
-- **open a menu instead of memorizing flags**
-- **use official APIs where possible**
+| Step | What happens |
+|---|---|
+| **Voice AI** | Analyzes your past tweets, builds a style profile, generates posts indistinguishable from you |
+| **Content scoring** | Every draft gets a 0-100 score. Weak drafts are rejected before posting |
+| **Smart engage** | Searches tweets by keyword, scores them (account size, recency, reciprocal potential), auto-likes |
+| **AI reply** | Generates contextual replies in your voice on high-scoring tweets |
+| **Thread gen** | Writes multi-tweet threads: hook, value, value, CTA |
+| **Anti-detection** | Random 30s-3min pauses, daily caps, human-like timing |
 
-## vs MoneyPrinterV2
+The brain is Qwen (free, no API cost). Also works with g4f, Ollama, or any OpenAI-compatible provider.
 
-| | MoneyPrinterV2 | CashCrab |
-|---|---|---|
-| YouTube upload | Selenium | Official YouTube API v3 |
-| Twitter posting | Selenium + browser profile hacks | Twitter / X OAuth 2.0 PKCE |
-| AI text gen | Ollama only | `g4f` with GPT / Claude / Gemini routes |
-| TTS | Narrow voice set | `edge-tts` |
-| Scheduler | Fragile | APScheduler + SQLite persistence |
-| Auth flow | Manual and annoying | Browser login + saved tokens |
-| CLI UX | Raw commands only | Menu-first terminal app + commands |
-| Install story | Repo-local | Global `cashcrab` install scripts |
+---
 
 ## Quickstart
 
@@ -63,175 +57,184 @@ irm https://raw.githubusercontent.com/redpersongpt/cashcrab/main/scripts/install
 cashcrab
 ```
 
-That install flow does the boring setup work for you:
+### First run
 
-- checks for Python
-- tries to install missing basics where possible
-- creates a private user-level venv
-- installs CashCrab
-- adds a global `cashcrab` launcher
-- warns you if optional media tools like `ffmpeg` are missing
+1. `cashcrab` opens the menu
+2. Go to **Setup accounts and API keys**
+3. Connect **Qwen OAuth** (recommended brain)
+4. Connect **Twitter / X**
+5. Go back, open **Twitter / X** > **X Engagement Autopilot**
+6. Run **Analyze my voice** once
+7. Start the autopilot
 
-If `cashcrab` is not found right away, restart the terminal and run it again.
-
-## First Run
-
-Inside the app:
-
-1. Open `Setup accounts and API keys`
-2. Connect YouTube
-3. Connect Twitter / X
-4. Save your Pexels and Google Places keys
-5. Go back and pick what you want to run
-
-## Features
-
-### Menu-first terminal app
-
-Run `cashcrab` and it opens a colorful terminal UI with numbered menus, panels, clear prompts, and status screens.
-
-### YouTube Shorts factory
-
-Generate a topic, script, voiceover, subtitles, visuals, and final vertical video, then upload it through the official API.
+Or skip the menu:
 
 ```bash
-cashcrab yt generate
-cashcrab yt generate --topic "5 habits of millionaires"
-cashcrab yt generate --no-upload
-cashcrab yt upload-all
-cashcrab yt status
+cashcrab auth qwen
+cashcrab auth twitter
+cashcrab tw voice-analyze
+cashcrab tw autopilot --duration 60
 ```
 
-### Twitter / X affiliate bot
-
-Post useful tweets, affiliate tweets, or mixed batches. Affiliate posts automatically include `#ad`.
-
-```bash
-cashcrab tw post --count 5 --affiliate-ratio 0.3
-cashcrab tw affiliate
-cashcrab tw organic --topic "productivity"
-cashcrab tw raw "My custom tweet"
-```
-
-### TikTok cross-posting
-
-Connect TikTok once, then upload any generated Short directly:
-
-```bash
-cashcrab tt upload-latest --title "Daily AI workflow"
-```
-
-### Instagram Reels publishing
-
-Connect your Meta app, then publish a Reel from the newest Short:
-
-```bash
-cashcrab ig upload-latest --caption "Daily AI workflow" --public-url "https://your-site.com/shorts/short.mp4"
-```
-
-### Lead finder and outreach
-
-Find businesses with Google Places, scrape public emails, export CSVs, and preview or send outreach.
-
-```bash
-cashcrab leads find --query "dentist" --location "Miami, FL"
-cashcrab leads outreach --csv leads.csv --dry-run
-cashcrab leads outreach --csv leads.csv --send
-```
-
-### Notifications and analytics
-
-Save Discord or Slack webhooks in setup if you want upload / tweet / lead notifications.
-
-Use the built-in dashboard for tracked metrics:
-
-```bash
-cashcrab dashboard
-cashcrab dashboard --export analytics.csv
-cashcrab leads campaign-update campaign-123 --opened 12 --replied 3
-```
-
-### Full autopilot
-
-```bash
-cashcrab auto --shorts 2 --tweets 5 --find-leads
-cashcrab schedule
-```
-
-If you enable `crosspost.tiktok` or `crosspost.instagram` in `config.json`, generated Shorts can also fan out after the YouTube upload step.
+---
 
 ## Commands
 
+### Engagement autopilot
+
+```bash
+# Analyze your writing voice (run once)
+cashcrab tw voice-analyze --count 50
+
+# Generate a tweet in your exact voice
+cashcrab tw voice-post --topic "AI workflows" --post
+
+# Score a draft before posting
+cashcrab tw score "Your draft tweet text here"
+
+# Search and engage (like + AI reply)
+cashcrab tw engage --keywords "AI,startups" --max-likes 15 --max-replies 5
+
+# Find accounts worth engaging with
+cashcrab tw targets --keywords "AI,tech" --min-followers 500 --max-followers 50000
+
+# Post a thread
+cashcrab tw thread --topic "5 AI automation tips" --count 5 --post
+
+# Full autopilot (runs for 60 min)
+cashcrab tw autopilot --duration 60
+
+# Engagement stats
+cashcrab tw engage-stats
+```
+
+### Posting and queue
+
+```bash
+# Post tweets
+cashcrab tw post --count 5 --affiliate-ratio 0.3
+cashcrab tw organic --topic "productivity"
+cashcrab tw affiliate
+cashcrab tw raw "My custom tweet"
+
+# Draft and queue
+cashcrab tw draft --topic "AI tips"
+cashcrab tw queue --preset authority --topic "AI" --count 4
+cashcrab tw queue-list
+cashcrab tw post-queued --limit 2
+cashcrab tw export-queue
+```
+
+### Scheduler
+
+```bash
+# Run everything once
+cashcrab auto --tweets 3 --engage --engage-duration 30
+
+# Always-on autopilot (every 60 min)
+cashcrab schedule
+```
+
+### Full command tree
+
 ```text
 cashcrab
-├── auth
-│   ├── youtube
-│   ├── twitter
-│   ├── keys
-│   ├── status
-│   └── revoke
-├── tt
-│   ├── upload
-│   └── upload-latest
-├── ig
-│   ├── upload
-│   └── upload-latest
-├── yt
-│   ├── generate
-│   ├── upload-all
-│   └── status
 ├── tw
-│   ├── post
-│   ├── affiliate
-│   ├── organic
-│   └── raw
-├── leads
-│   ├── find
-│   └── outreach
-├── dashboard
-├── schedule
-└── auto
+│   ├── autopilot          # Thought leader agent loop
+│   ├── voice-analyze      # Build your writing voice profile
+│   ├── voice-post         # Post in your exact voice
+│   ├── engage             # Search & auto-engage
+│   ├── targets            # Find engagement targets
+│   ├── thread             # Generate and post threads
+│   ├── score              # Score a draft 0-100
+│   ├── engage-stats       # Activity summary
+│   ├── post               # Batch post
+│   ├── affiliate           # Post affiliate tweet
+│   ├── organic            # Post organic tweet
+│   ├── raw                # Post exact text
+│   ├── draft              # Draft + queue
+│   ├── queue              # Workflow queue builder
+│   ├── queue-list         # Show queue
+│   ├── post-queued        # Drain queue
+│   └── export-queue       # Export as Markdown
+├── auth
+│   ├── qwen               # Connect Qwen OAuth
+│   ├── twitter             # Connect X account
+│   ├── keys               # Save API keys
+│   ├── status             # Auth status
+│   └── revoke             # Remove saved login
+├── skills                  # Browse skill packs
+├── agents                  # Browse sub-agent roles
+├── schedule               # Always-on scheduler
+├── auto                   # Run once
+├── dashboard              # Analytics
+└── onboard                # AI setup wizard
 ```
+
+---
+
+## Configuration
+
+`config.json` at your CashCrab home directory:
+
+```json
+{
+  "llm": {
+    "provider": "qwen_code",
+    "model": "qwen3.5-plus"
+  },
+  "twitter": {
+    "client_id": "your-client-id",
+    "client_secret": "your-client-secret",
+    "bearer_token": "",
+    "schedule_interval_minutes": 60,
+    "engage": {
+      "keywords": ["AI", "automation", "tech"],
+      "max_likes_per_hour": 15,
+      "max_replies_per_hour": 5,
+      "autopilot_duration_minutes": 30
+    },
+    "products": [
+      {
+        "name": "Product Name",
+        "url": "https://amzn.to/EXAMPLE",
+        "keywords": ["tech"]
+      }
+    ]
+  }
+}
+```
+
+| Key | What it does |
+|---|---|
+| `twitter.client_id` | From developer.twitter.com > OAuth 2.0 |
+| `twitter.bearer_token` | Optional. Improves read rate limits for engagement |
+| `twitter.schedule_interval_minutes` | How often the scheduler runs (default: 60) |
+| `twitter.engage.keywords` | Keywords for search & engage + thought leader |
+| `twitter.engage.autopilot_duration_minutes` | How long each engagement cycle runs |
+| `twitter.products` | Affiliate products for monetization posts |
 
 ## Architecture
 
 ```text
 cashcrab/
-├── main.py
-├── pyproject.toml
-├── config.example.json
-├── scripts/
-│   ├── install.sh
-│   └── install.ps1
+├── main.py                 # CLI + interactive menu
 ├── modules/
-│   ├── auth.py
-│   ├── analytics.py
-│   ├── config.py
-│   ├── leads.py
-│   ├── notify.py
-│   ├── scheduler.py
-│   ├── tiktok.py
-│   ├── tts.py
-│   ├── twitter.py
-│   ├── ui.py
-│   ├── instagram.py
-│   ├── video.py
-│   └── youtube.py
+│   ├── twitter.py          # Posting, queue, threads, scoring
+│   ├── x_engage.py         # Voice AI, engagement, thought leader
+│   ├── scheduler.py        # APScheduler (60-min X cycles)
+│   ├── llm.py              # Qwen / g4f / Ollama / OpenAI
+│   ├── auth.py             # OAuth 2.0 PKCE
+│   ├── analytics.py        # Tweet tracking
+│   ├── notify.py           # Discord / Slack webhooks
+│   ├── config.py           # Config loader
+│   └── ui.py               # Terminal UI
+├── config.example.json
 ├── assets/
-├── shorts/
-└── tokens/
+└── scripts/
+    ├── install.sh
+    └── install.ps1
 ```
-
-## What You Still Need
-
-- `client_secrets.json` for YouTube
-- Twitter / X OAuth credentials in `config.json`
-- optional Pexels key
-- optional Google Places key
-- optional Discord / Slack webhooks
-- optional public MP4 hosting for Instagram Reels publishing
-
-The installer sets up the app. Your platform credentials are still yours to provide.
 
 ## License
 

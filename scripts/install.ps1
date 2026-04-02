@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 $RepoOwner = if ($env:REPO_OWNER) { $env:REPO_OWNER } else { "redpersongpt" }
 $RepoName = if ($env:REPO_NAME) { $env:REPO_NAME } else { "cashcrab" }
 $CashCrabRef = if ($env:CASHCRAB_REF) { $env:CASHCRAB_REF } else { "main" }
-$InstallRoot = if ($env:CASHCRAB_HOME) { $env:CASHCRAB_HOME } else { Join-Path $env:LOCALAPPDATA "CashCrab" }
+$AppHome = if ($env:CASHCRAB_HOME) { $env:CASHCRAB_HOME } else { Join-Path $env:USERPROFILE ".cashcrab" }
+$InstallRoot = if ($env:CASHCRAB_INSTALL_ROOT) { $env:CASHCRAB_INSTALL_ROOT } else { Join-Path $env:LOCALAPPDATA "CashCrab" }
 $BinDir = if ($env:CASHCRAB_BIN_DIR) { $env:CASHCRAB_BIN_DIR } else { Join-Path $InstallRoot "bin" }
 $VenvDir = Join-Path $InstallRoot "venv"
 $SourceDir = Join-Path $InstallRoot "source"
@@ -45,6 +46,21 @@ function Install-PythonIfMissing {
     throw "Python 3 is missing and winget was not found. Install Python 3 first, then rerun this command."
 }
 
+function Install-NodeIfMissing {
+    if ((Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    Step "Node.js not found. Trying to install it for Qwen OAuth support"
+
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install -e --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+        return
+    }
+
+    Say "WARN: Node.js is missing and winget was not found. CashCrab can still run with g4f, ollama, or OpenAI-compatible providers."
+}
+
 function Get-PythonCommand {
     if (Get-Command py -ErrorAction SilentlyContinue) {
         return @("py", "-3")
@@ -74,6 +90,7 @@ function Add-ToUserPath {
 Banner
 Step "Checking installer dependencies"
 Install-PythonIfMissing
+Install-NodeIfMissing
 
 $python = Get-PythonCommand
 $pythonArgs = @()
@@ -95,11 +112,24 @@ try {
         throw "Could not find extracted source directory: $extracted"
     }
 
-    New-Item -ItemType Directory -Force -Path $InstallRoot, $BinDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $InstallRoot, $BinDir, $AppHome, (Join-Path $AppHome "assets"), (Join-Path $AppHome "tokens"), (Join-Path $AppHome "output"), (Join-Path $AppHome "shorts") | Out-Null
     if (Test-Path $SourceDir) {
         Remove-Item -Recurse -Force $SourceDir
     }
     Copy-Item -Recurse -Force $extracted $SourceDir
+
+    $configExampleSource = Join-Path $SourceDir "config.example.json"
+    if ((Test-Path $configExampleSource) -and (-not (Test-Path (Join-Path $AppHome "config.example.json")))) {
+        Copy-Item $configExampleSource (Join-Path $AppHome "config.example.json")
+    }
+    if ((Test-Path $configExampleSource) -and (-not (Test-Path (Join-Path $AppHome "config.json")))) {
+        Copy-Item $configExampleSource (Join-Path $AppHome "config.json")
+    }
+
+    $mascotSource = Join-Path $SourceDir "assets\cashcrab_48x48.png"
+    if (Test-Path $mascotSource) {
+        Copy-Item $mascotSource (Join-Path $AppHome "assets\cashcrab_48x48.png") -Force
+    }
 
     Step "Creating private environment"
     & $python[0] @pythonArgs -m venv $VenvDir
@@ -113,16 +143,32 @@ try {
 
     $cmdLauncher = @"
 @echo off
+set CASHCRAB_HOME=$AppHome
 "$cashcrabExe" %*
 "@
     Set-Content -Path (Join-Path $BinDir "cashcrab.cmd") -Value $cmdLauncher -Encoding ASCII
 
     $psLauncher = @"
+`$env:CASHCRAB_HOME = "$AppHome"
 & "$cashcrabExe" @args
 "@
     Set-Content -Path (Join-Path $BinDir "cashcrab.ps1") -Value $psLauncher -Encoding ASCII
 
     Add-ToUserPath -PathToAdd $BinDir
+
+    Step "Checking Qwen brain"
+    if (Get-Command qwen -ErrorAction SilentlyContinue) {
+        Say "Qwen Code CLI: found"
+    } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
+        try {
+            npm install -g @qwen-code/qwen-code@latest | Out-Null
+            Say "Qwen Code CLI: installed"
+        } catch {
+            Say "WARN: Qwen Code CLI could not be installed globally. CashCrab will fall back to npx for Qwen OAuth."
+        }
+    } else {
+        Say "WARN: npm not found. Qwen OAuth will not be available until Node.js is installed."
+    }
 
     Step "Checking optional media tools"
     if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
@@ -142,6 +188,9 @@ try {
     Write-Host ""
     Write-Host "Command:"
     Write-Host "  cashcrab"
+    Write-Host ""
+    Write-Host "Config home:"
+    Write-Host "  $AppHome"
     Write-Host ""
     Write-Host "If the command is not found right away, restart PowerShell."
 }

@@ -14,27 +14,6 @@ def _make_scheduler() -> BlockingScheduler:
     )
 
 
-def _youtube_job():
-    from modules import crosspost, video, youtube
-    try:
-        result = video.generate_short()
-        youtube.upload(
-            result["video_path"],
-            result["title"],
-            result["description"],
-        )
-        crosspost.publish_short(result["video_path"], result["title"], result["description"])
-        ui.success(f"Scheduler uploaded a YouTube Short: {result['title']}")
-    except Exception as e:
-        try:
-            from modules import notify
-
-            notify.error("scheduler youtube job", str(e))
-        except Exception:
-            pass
-        ui.fail(f"Scheduler YouTube job failed: {e}")
-
-
 def _twitter_job():
     from modules import twitter
     try:
@@ -50,25 +29,44 @@ def _twitter_job():
         ui.fail(f"Scheduler Twitter job failed: {e}")
 
 
+def _x_engage_job():
+    from modules import x_engage
+    from modules.config import optional_section
+
+    try:
+        cfg = optional_section("twitter") or {}
+        engage_cfg = cfg.get("engage", {})
+        duration = engage_cfg.get("autopilot_duration_minutes", 30)
+        x_engage.thought_leader_cycle(duration_minutes=min(duration, 45))
+        ui.success("Scheduler completed X engagement cycle.")
+    except Exception as e:
+        try:
+            from modules import notify
+
+            notify.error("scheduler x engage job", str(e))
+        except Exception:
+            pass
+        ui.fail(f"Scheduler X engagement job failed: {e}")
+
+
 def start():
     scheduler = _make_scheduler()
 
-    yt_cfg = section("youtube")
-    hours = yt_cfg.get("schedule_hours", [9])
-    for h in hours:
-        scheduler.add_job(
-            _youtube_job, "cron", hour=h, minute=0,
-            id=f"youtube_{h}", replace_existing=True,
-        )
-        ui.info(f"YouTube job scheduled for {h:02d}:00 every day")
-
     tw_cfg = section("twitter")
-    interval = tw_cfg.get("schedule_interval_minutes", 120)
+    interval = tw_cfg.get("schedule_interval_minutes", 60)
+
     scheduler.add_job(
         _twitter_job, "interval", minutes=interval,
         id="twitter_bot", replace_existing=True,
     )
-    ui.info(f"Twitter / X job scheduled every {interval} minutes")
+    ui.info(f"X post job scheduled every {interval} minutes")
+
+    scheduler.add_job(
+        _x_engage_job, "interval", minutes=interval,
+        id="x_engage_bot", replace_existing=True,
+        misfire_grace_time=300,
+    )
+    ui.info(f"X engagement autopilot scheduled every {interval} minutes")
 
     ui.success("Scheduler is running. Press Ctrl+C to stop it.")
     try:

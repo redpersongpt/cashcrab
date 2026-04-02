@@ -19,7 +19,7 @@ dependencies = [
   "google-auth-oauthlib>=1.1",
   "moviepy>=1.0.3",
   "openai>=1.30",
-  "Pillow>=10.0",
+  "Pillow>=12.1.1",
   "requests>=2.31",
   "rich>=13.7",
   "SQLAlchemy>=2.0",
@@ -34,3 +34,6 @@ py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 include = ["modules*"]
+
+[tool.setuptools.package-data]
+"modules.resources" = ["config.example.json", "cashcrab_48x48.png"]

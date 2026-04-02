@@ -4,6 +4,7 @@ import webbrowser
 import hashlib
 import base64
 import secrets
+import subprocess
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -13,11 +14,11 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-from modules.config import section, optional_section, ROOT
+from modules.config import section, optional_section, ROOT, CONFIG_PATH, load as load_config, reload as reload_config
 from modules import ui
 
 TOKENS_DIR = ROOT / "tokens"
-TOKENS_DIR.mkdir(exist_ok=True)
+TOKENS_DIR.mkdir(parents=True, exist_ok=True)
 
 YT_TOKEN = TOKENS_DIR / "youtube.json"
 TW_TOKEN = TOKENS_DIR / "twitter.json"
@@ -54,6 +55,16 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
+def _sync_owner_backend():
+    try:
+        from modules import backend
+
+        if backend.enabled():
+            backend.sync_owner_config()
+    except Exception:
+        pass
+
+
 # ── API Key Storage (Pexels, Google Places) ──────────
 
 def store_api_key(service: str, key: str):
@@ -69,7 +80,10 @@ def get_api_key(service: str) -> str | None:
 
 
 def setup_api_keys():
+    _sync_owner_backend()
     services = {
+        "dashscope": "DashScope API key (optional Qwen API fallback)",
+        "openai": "OpenAI API key (optional fallback)",
         "pexels": "Pexels (free stock video)",
         "google_places": "Google Places (lead finder)",
         "discord_webhook": "Discord webhook (optional)",
@@ -90,13 +104,39 @@ def setup_api_keys():
     ui.success(f"Saved keys to {KEYS_FILE}")
 
 
+def qwen_login():
+    from modules import llm
+
+    ui.info("Starting Qwen OAuth in your terminal...")
+    ui.info("A browser window may open. Finish the login, then return here.")
+
+    command = llm.qwen_cli_base_command() + ["auth", "qwen-oauth"]
+    result = subprocess.run(command, check=False)
+    if result.returncode != 0:
+        raise RuntimeError("Qwen OAuth did not complete successfully.")
+
+    cfg = load_config()
+    llm_cfg = cfg.setdefault("llm", {})
+    llm_cfg["provider"] = "qwen_code"
+    llm_cfg["model"] = llm_cfg.get("model") or "qwen3.5-plus"
+    llm_cfg["auth_type"] = "qwen-oauth"
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    reload_config()
+    ui.success("Qwen OAuth is connected and set as the recommended LLM.")
+
+
 # ── YouTube OAuth2 ───────────────────────────────────
 
 def youtube_login():
+    _sync_owner_backend()
     cfg = section("youtube")
-    secrets_file = cfg.get("client_secrets_file", "client_secrets.json")
+    secrets_file = Path(cfg.get("client_secrets_file", "client_secrets.json"))
+    if not secrets_file.is_absolute():
+        root_candidate = ROOT / secrets_file
+        if root_candidate.exists():
+            secrets_file = root_candidate
     ui.info("Opening your browser for YouTube login...")
-    flow = InstalledAppFlow.from_client_secrets_file(secrets_file, YT_SCOPES)
+    flow = InstalledAppFlow.from_client_secrets_file(str(secrets_file), YT_SCOPES)
     creds = flow.run_local_server(port=0)
     YT_TOKEN.write_text(creds.to_json())
     ui.success("YouTube is connected.")
@@ -119,6 +159,7 @@ def youtube_credentials():
 # ── Twitter OAuth 2.0 PKCE ───────────────────────────
 
 def twitter_login():
+    _sync_owner_backend()
     cfg = section("twitter")
     client_id = cfg["client_id"]
     client_secret = cfg.get("client_secret", "")
@@ -219,6 +260,8 @@ def twitter_access_token() -> str:
 def status():
     rows = []
 
+    _sync_owner_backend()
+
     if YT_TOKEN.exists():
         try:
             creds = Credentials.from_authorized_user_file(str(YT_TOKEN), YT_SCOPES)
@@ -254,19 +297,39 @@ def status():
     except Exception:
         rows.append(("Instagram", "Not connected", "Run cashcrab -> Setup -> Connect Instagram"))
 
+    try:
+        from modules import backend
+
+        backend_status, backend_detail = backend.status()
+        rows.append(("Owner backend", backend_status, backend_detail))
+    except Exception:
+        rows.append(("Owner backend", "Disabled", "Optional"))
+
+    try:
+        from modules import llm
+
+        qwen_status, qwen_detail = llm.qwen_auth_status()
+        rows.append(("Qwen OAuth", qwen_status, qwen_detail))
+    except Exception as exc:
+        rows.append(("Qwen OAuth", "Unavailable", str(exc)))
+
     keys = json.loads(KEYS_FILE.read_text()) if KEYS_FILE.exists() else {}
+    dashscope_value = keys.get("dashscope", "")
+    openai_value = keys.get("openai", "")
     pexels_value = keys.get("pexels", "")
     google_value = keys.get("google_places", "")
     discord_value = keys.get("discord_webhook", "")
     slack_value = keys.get("slack_webhook", "")
+    rows.append(("DashScope key", "Set" if dashscope_value else "Optional", f"...{dashscope_value[-6:]}" if dashscope_value else "Fallback for Qwen API mode"))
+    rows.append(("OpenAI key", "Set" if openai_value else "Optional", f"...{openai_value[-6:]}" if openai_value else "Fallback for OpenAI-compatible providers"))
     rows.append(("Pexels key", "Set" if pexels_value else "Missing", f"...{pexels_value[-6:]}" if pexels_value else "Needed for stock footage"))
     rows.append(("Google Places key", "Set" if google_value else "Missing", f"...{google_value[-6:]}" if google_value else "Needed for lead finder"))
     rows.append(("Discord webhook", "Set" if discord_value else "Optional", f"...{discord_value[-10:]}" if discord_value else "Used for success/error notifications"))
     rows.append(("Slack webhook", "Set" if slack_value else "Optional", f"...{slack_value[-10:]}" if slack_value else "Used for success/error notifications"))
 
     cfg = optional_section("llm", {})
-    provider = cfg.get("provider", "g4f")
-    model = cfg.get("model", "gpt-4o-mini")
+    provider = cfg.get("provider", "qwen_code")
+    model = cfg.get("model", "qwen3.5-plus")
     rows.append(("LLM", "Ready", f"{provider} / {model}"))
 
     ui.info("Setup status")
