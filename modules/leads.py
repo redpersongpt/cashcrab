@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 
 from modules.config import section, ROOT
 from modules.auth import get_api_key
+from modules import ui
 
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 
@@ -24,7 +25,7 @@ def _places_search(query: str, location: str, radius: int, api_key: str) -> list
     geocode_resp.raise_for_status()
     results = geocode_resp.json().get("results", [])
     if not results:
-        print(f"  Could not geocode: {location}")
+        ui.warn(f"Could not locate: {location}")
         return []
 
     loc = results[0]["geometry"]["location"]
@@ -94,7 +95,7 @@ def find_leads(query: str | None = None, location: str | None = None) -> list[di
     cfg = section("leads")
     api_key = get_api_key("google_places") or cfg.get("google_places_api_key", "")
     if not api_key:
-        raise RuntimeError("No Google Places API key. Run: python main.py auth keys")
+        raise RuntimeError("No Google Places API key. Open CashCrab -> Setup -> Save API keys.")
     queries = [query] if query else cfg.get("search_queries", [])
     locations = [location] if location else cfg.get("locations", [])
     filters = cfg.get("email_filter", ["noreply", "no-reply", "donotreply"])
@@ -103,16 +104,25 @@ def find_leads(query: str | None = None, location: str | None = None) -> list[di
 
     for q in queries:
         for loc in locations:
-            print(f"Searching: {q} in {loc}...")
+            ui.info(f"Searching for {q} in {loc}...")
             businesses = _places_search(q, loc, cfg.get("radius_meters", 5000), api_key)
-            print(f"  Found {len(businesses)} businesses")
+            ui.info(f"Found {len(businesses)} businesses")
 
             for biz in businesses:
                 biz["email"] = _extract_email(biz["website"], filters)
                 if biz["email"]:
-                    print(f"    {biz['name']}: {biz['email']}")
+                    ui.info(f"{biz['name']}: {biz['email']}")
                 biz["query"] = q
                 biz["location"] = loc
+
+            with_email = sum(1 for biz in businesses if biz.get("email"))
+            try:
+                from modules import analytics, notify
+
+                analytics.track_leads(query=q, location=loc, total=len(businesses), with_email=with_email)
+                notify.leads_found(query=q, location=loc, count=len(businesses), with_email=with_email)
+            except Exception:
+                pass
 
             all_leads.extend(businesses)
 
@@ -121,7 +131,7 @@ def find_leads(query: str | None = None, location: str | None = None) -> list[di
 
 def export_csv(leads: list[dict], output_path: str | None = None) -> str:
     if not leads:
-        print("No leads to export.")
+        ui.warn("No leads found, so nothing was exported.")
         return ""
 
     cfg = section("leads")
@@ -137,7 +147,7 @@ def export_csv(leads: list[dict], output_path: str | None = None) -> str:
         writer.writerows(leads)
 
     with_email = sum(1 for l in leads if l.get("email"))
-    print(f"Exported {len(leads)} leads ({with_email} with email) to {output_path}")
+    ui.success(f"Saved {len(leads)} leads ({with_email} with email) to {output_path}")
     return output_path
 
 
@@ -154,7 +164,7 @@ def send_outreach(leads: list[dict] | None = None, csv_path: str | None = None,
             leads = list(csv.DictReader(f))
 
     if not leads:
-        print("No leads provided.")
+        ui.warn("No leads were provided.")
         return
 
     emailable = [l for l in leads if l.get("email")]
@@ -165,16 +175,16 @@ def send_outreach(leads: list[dict] | None = None, csv_path: str | None = None,
             seen.add(l["email"])
             unique.append(l)
 
-    print(f"{len(unique)} unique emails to send (from {len(leads)} leads)")
+    ui.info(f"{len(unique)} unique emails to send (from {len(leads)} leads)")
 
     if dry_run:
         for l in unique[:5]:
             subject = template["subject"].format(
                 business_name=l["name"], from_name=from_name
             )
-            print(f"  [DRY RUN] To: {l['email']} | Subject: {subject}")
+            ui.info(f"Preview -> {l['email']} | {subject}")
         if len(unique) > 5:
-            print(f"  ... and {len(unique) - 5} more")
+            ui.info(f"... and {len(unique) - 5} more")
         return
 
     server = smtplib.SMTP(smtp_cfg["host"], smtp_cfg["port"])
@@ -203,11 +213,11 @@ def send_outreach(leads: list[dict] | None = None, csv_path: str | None = None,
             try:
                 server.sendmail(smtp_cfg["email"], l["email"], msg.as_string())
                 sent += 1
-                print(f"  Sent to: {l['name']} ({l['email']})")
+                ui.success(f"Sent to {l['name']} ({l['email']})")
                 time.sleep(3)
             except Exception as e:
-                print(f"  Failed: {l['email']} - {e}")
+                ui.fail(f"Could not send to {l['email']}: {e}")
 
-        print(f"Done. Sent {sent}/{len(unique)} emails.")
+        ui.success(f"Finished. Sent {sent} of {len(unique)} emails.")
     finally:
         server.quit()

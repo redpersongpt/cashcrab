@@ -6,6 +6,7 @@ from googleapiclient.http import MediaFileUpload
 
 from modules.config import section, ROOT
 from modules.auth import youtube_credentials
+from modules import ui
 
 
 def _service():
@@ -36,17 +37,24 @@ def upload(file_path: str, title: str, description: str = "",
     media = MediaFileUpload(file_path, mimetype="video/mp4", resumable=True)
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
 
-    print(f"Uploading: {Path(file_path).name}")
+    ui.info(f"Uploading to YouTube: {Path(file_path).name}")
     response = None
     while response is None:
         status, response = request.next_chunk()
         if status:
             pct = int(status.progress() * 100)
-            print(f"  {pct}%", end="\r")
+            ui.info(f"Upload progress: {pct}%")
 
     video_id = response["id"]
     url = f"https://youtube.com/shorts/{video_id}"
-    print(f"  Uploaded: {url}")
+    ui.success(f"Uploaded to YouTube: {url}")
+    try:
+        from modules import analytics, notify
+
+        analytics.track_youtube(title=title, video_id=video_id)
+        notify.youtube_uploaded(title=title, video_id=video_id)
+    except Exception:
+        pass
     return video_id
 
 
@@ -54,7 +62,7 @@ def upload_pending():
     cfg = section("youtube")
     folder = Path(cfg.get("shorts_folder", "./shorts"))
     if not folder.exists():
-        print(f"Shorts folder not found: {folder}")
+        ui.fail(f"Shorts folder not found: {folder}")
         return []
 
     videos = sorted(folder.glob("*.mp4"))
@@ -65,10 +73,10 @@ def upload_pending():
 
     pending = [v for v in videos if v.name not in done]
     if not pending:
-        print("No pending videos.")
+        ui.warn("No pending videos found.")
         return []
 
-    print(f"{len(pending)} video(s) to upload.")
+    ui.info(f"{len(pending)} video(s) ready to upload.")
     tags = cfg.get("default_tags", [])
     ids = []
 
@@ -81,7 +89,7 @@ def upload_pending():
             ids.append(vid)
             time.sleep(3)
         except Exception as e:
-            print(f"  Failed: {v.name} - {e}")
+            ui.fail(f"Could not upload {v.name}: {e}")
 
     return ids
 
@@ -90,7 +98,7 @@ def status():
     cfg = section("youtube")
     folder = Path(cfg.get("shorts_folder", "./shorts"))
     if not folder.exists():
-        print(f"Shorts folder not found: {folder}")
+        ui.fail(f"Shorts folder not found: {folder}")
         return
 
     videos = sorted(folder.glob("*.mp4"))
@@ -100,8 +108,17 @@ def status():
         done = set(uploaded_log.read_text().strip().splitlines())
 
     pending = [v for v in videos if v.name not in done]
-    print(f"Total: {len(videos)} | Uploaded: {len(done)} | Pending: {len(pending)}")
-    for v in pending:
-        print(f"  pending: {v.name}")
-    for d in sorted(done):
-        print(f"  done:    {d}")
+    rows = [
+        ("All Shorts", "Ready", str(len(videos))),
+        ("Uploaded", "Done", str(len(done))),
+        ("Pending", "Ready" if pending else "None", str(len(pending))),
+    ]
+    ui.info("YouTube Shorts status")
+    ui.status_table(rows)
+
+    for v in pending[:10]:
+        ui.info(f"Pending: {v.name}")
+
+    done_list = sorted(done)
+    for name in done_list[:10]:
+        ui.info(f"Uploaded: {name}")

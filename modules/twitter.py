@@ -6,6 +6,7 @@ import tweepy
 from modules.config import section
 from modules import llm
 from modules.auth import twitter_access_token
+from modules import ui
 
 
 def _client() -> tweepy.Client:
@@ -13,11 +14,18 @@ def _client() -> tweepy.Client:
     return tweepy.Client(token)
 
 
-def post_tweet(text: str) -> str:
+def post_tweet(text: str, tweet_type: str = "organic") -> str:
     client = _client()
     resp = client.create_tweet(text=text[:280])
     tweet_id = resp.data["id"]
-    print(f"  Posted tweet: {tweet_id}")
+    ui.success(f"Tweet posted: {tweet_id}")
+    try:
+        from modules import analytics, notify
+
+        analytics.track_tweet(tweet_id=tweet_id, text=text, tweet_type=tweet_type)
+        notify.tweet_posted(tweet_id=tweet_id, text=text)
+    except Exception:
+        pass
     return tweet_id
 
 
@@ -26,7 +34,7 @@ def post_affiliate(product: dict | None = None) -> str:
     products = cfg.get("products", [])
 
     if not product and not products:
-        print("No products configured.")
+        ui.warn("No affiliate products are configured yet.")
         return ""
 
     if not product:
@@ -56,7 +64,7 @@ def post_affiliate(product: dict | None = None) -> str:
     if url not in text:
         text = text.rstrip() + f" {url}"
 
-    return post_tweet(text)
+    return post_tweet(text, tweet_type="affiliate")
 
 
 def post_organic(topic: str | None = None) -> str:
@@ -79,25 +87,25 @@ def post_organic(topic: str | None = None) -> str:
         system="You are a social media expert building an audience."
     )
 
-    return post_tweet(text)
+    return post_tweet(text, tweet_type="organic")
 
 
 def run_batch(count: int = 1, affiliate_ratio: float = 0.3):
-    print(f"Posting {count} tweet(s) (affiliate ratio: {affiliate_ratio:.0%})...")
+    ui.info(f"Posting {count} tweet(s). Affiliate ratio: {affiliate_ratio:.0%}")
 
     for i in range(count):
         try:
             if random.random() < affiliate_ratio:
-                print(f"[{i+1}/{count}] Affiliate tweet:")
+                ui.step(i + 1, count, "Posting an affiliate tweet")
                 post_affiliate()
             else:
-                print(f"[{i+1}/{count}] Organic tweet:")
+                ui.step(i + 1, count, "Posting a helpful tweet")
                 post_organic()
 
             if i < count - 1:
                 wait = random.randint(60, 180)
-                print(f"  Waiting {wait}s...")
+                ui.info(f"Waiting {wait} seconds before the next tweet...")
                 time.sleep(wait)
         except Exception as e:
-            print(f"  Error: {e}")
+            ui.fail(str(e))
             time.sleep(30)

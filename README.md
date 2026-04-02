@@ -5,202 +5,136 @@
 <h1 align="center">CashCrab</h1>
 
 <p align="center">
-  <strong>Your claws on autopilot.</strong><br>
-  YouTube Shorts, Twitter affiliate posts, and local lead gen — all from one CLI.<br>
-  No API keys for AI. Uses your existing subscriptions.
+  <strong>A colorful terminal app for YouTube Shorts, X posting, and local lead generation.</strong><br>
+  Beginner-first menu by default. Power-user commands still available.
 </p>
 
-<p align="center">
-  <a href="#quickstart">Quickstart</a> &bull;
-  <a href="#features">Features</a> &bull;
-  <a href="#vs-moneyprinterv2">vs MoneyPrinterV2</a> &bull;
-  <a href="#commands">Commands</a> &bull;
-  <a href="#architecture">Architecture</a>
-</p>
-
----
-
-## Why CashCrab?
-
-Most "money printer" tools either **break every week** (Selenium on YouTube DOM lol) or **cost more to run than they earn** (pay-per-token APIs eating your margins).
-
-CashCrab fixes both:
-
-- **Zero AI cost** — routes through your ChatGPT/Claude/Gemini subscriptions via `g4f`. No API keys.
-- **Official APIs only** — YouTube Data API v3, Twitter OAuth 2.0. No Selenium. No DOM scraping. No Firefox profiles.
-- **Free TTS** — 300+ natural voices via `edge-tts`. Not some pinned wheel from 2023.
-- **Actually works** — no recursive stack overflows, no broken schedulers, no zombie browser processes.
-
-## vs MoneyPrinterV2
-
-| | MoneyPrinterV2 | CashCrab |
-|---|---|---|
-| YouTube upload | Selenium (breaks on UI update) | Official YouTube API v3 |
-| Twitter posting | Selenium + Firefox profile | Twitter OAuth 2.0 PKCE |
-| AI text gen | Ollama only (local) | g4f: GPT-4o, Claude, Gemini — your subs |
-| AI images | Gemini API only | g4f DALL-E + Pexels stock video |
-| TTS | KittenTTS (8 voices, pinned) | edge-tts (300+ voices, free) |
-| Subtitles | "Planned" (unchecked roadmap) | Built-in from word-level TTS timing |
-| Scheduler | Broken — jobs never fire | APScheduler + SQLite persistence |
-| Error handling | Recursive retry → stack overflow | Exponential backoff, max 3 retries |
-| Email outreach | Sends to noreply@ addresses | Filters junk, CAN-SPAM compliant |
-| Config | Re-reads JSON on every function call | Loaded once, cached |
-| Auth | Manual token copy-paste | OAuth browser flow, auto-refresh |
-| FTC compliance | None | Auto-adds #ad to affiliate tweets |
-| Dependencies | Downloads & compiles Go binary at runtime | pip install, done |
-
-## Quickstart
+## Quick Start
 
 ```bash
 git clone https://github.com/YOUR_USER/cashcrab.git
 cd cashcrab
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
+python3 -m pip install -e .
 cp config.example.json config.json
+cashcrab
 ```
 
-Link your accounts:
+Inside the app:
+
+1. Open `Setup accounts and API keys`
+2. Connect YouTube and Twitter / X
+3. Save your Pexels and Google Places keys
+4. Go back and pick the workflow you want
+
+If you do not want the installed command, this still works:
+
 ```bash
-python main.py auth youtube    # opens browser → authorize → done
-python main.py auth twitter    # opens browser → authorize → done
-python main.py auth keys       # set Pexels + Google Places keys
+python3 main.py
 ```
 
-Generate your first Short:
+## Why It Is Simpler Now
+
+- Running `cashcrab` opens a numbered menu automatically.
+- Every screen uses the same colorful terminal layout.
+- `0` always goes back.
+- Status, errors, and next steps use plain language.
+- The old command mode still exists for automation and scripts.
+
+## Most Useful Commands
+
+The app is built for the interactive menu first, but these direct commands still work:
+
 ```bash
-python main.py yt generate --topic "5 habits of millionaires"
+cashcrab yt generate --topic "5 habits of millionaires"
+cashcrab yt upload-all
+cashcrab tw post --count 3 --affiliate-ratio 0.3
+cashcrab leads find --query "dentist" --location "Miami, FL"
+cashcrab leads outreach --csv leads.csv --dry-run
+cashcrab auto --shorts 1 --tweets 3 --find-leads
+cashcrab schedule
 ```
 
 ## Features
 
-### YouTube Shorts Factory
-LLM writes the script → edge-tts narrates with word-level subtitles → Pexels stock footage or AI images → moviepy assembles 1080x1920 vertical video → uploads via official API.
+### YouTube Shorts
+
+- Generates a topic, script, voiceover, subtitles, visuals, and final video
+- Uploads through the official YouTube API
+- Keeps pending Shorts in `shorts/`
+
+### Twitter / X
+
+- Posts helpful or affiliate tweets
+- Uses OAuth 2.0 PKCE
+- Adds `#ad` to affiliate tweets automatically
+
+### Local Lead Finder
+
+- Finds businesses with Google Places
+- Scrapes public websites for email addresses
+- Exports leads to CSV
+- Can preview or send outreach emails
+
+### Automation
+
+- One-shot autopilot mode
+- APScheduler-based recurring jobs
+- Simple terminal dashboard for status
+
+## Install Notes
+
+`cashcrab` is now exposed as a real console command through `pyproject.toml`, so local installs work with:
 
 ```bash
-python main.py yt generate                     # full auto
-python main.py yt generate --topic "AI tools"  # pick a topic
-python main.py yt generate --no-upload         # generate only
-python main.py yt upload-all                   # upload pending
-python main.py yt status                       # see queue
+python3 -m pip install -e .
 ```
 
-### Twitter Affiliate Bot
-Mixes organic value tweets with affiliate promotions. Auto-adds `#ad` for FTC compliance. OAuth 2.0 with PKCE — no manual token juggling.
+If you want a cleaner global install, `pipx install .` is the next step.
 
-```bash
-python main.py tw post --count 5                  # mix of organic + affiliate
-python main.py tw affiliate                        # single affiliate tweet
-python main.py tw organic --topic "productivity"   # value tweet
-python main.py tw raw "My custom tweet"            # post anything
-```
-
-### Local Lead Finder + Cold Outreach
-Google Places API finds businesses → scrapes websites for emails → filters out junk addresses → sends CAN-SPAM compliant outreach.
-
-```bash
-python main.py leads find --query "dentist" --location "Miami, FL"
-python main.py leads outreach --csv leads.csv --dry-run   # preview
-python main.py leads outreach --csv leads.csv --send       # send
-```
-
-### Full Autopilot
-```bash
-python main.py auto --shorts 2 --tweets 5 --find-leads
-python main.py schedule   # runs forever on cron
-```
-
-## Commands
-
-```
-main.py
-├── auth
-│   ├── youtube     # OAuth2 browser login
-│   ├── twitter     # OAuth2 PKCE browser login
-│   ├── keys        # set Pexels / Google Places API keys
-│   ├── status      # show all auth status
-│   └── revoke      # remove tokens
-├── yt
-│   ├── generate    # create + upload a Short
-│   ├── upload-all  # upload pending from shorts/
-│   └── status      # queue status
-├── tw
-│   ├── post        # batch tweets (organic + affiliate mix)
-│   ├── affiliate   # single affiliate tweet
-│   ├── organic     # single value tweet
-│   └── raw         # post exact text
-├── leads
-│   ├── find        # discover businesses
-│   └── outreach    # send emails
-├── schedule        # run YouTube + Twitter on cron
-└── auto            # one-shot: shorts + tweets + leads
-```
-
-## Architecture
-
-```
-cashcrab/
-├── main.py                 # Click CLI
-├── config.example.json     # Template (no secrets)
-├── modules/
-│   ├── auth.py             # OAuth2 flows + API key storage
-│   ├── config.py           # Load-once config
-│   ├── llm.py              # g4f (free) / Ollama (local)
-│   ├── tts.py              # edge-tts (free, 300+ voices)
-│   ├── video.py            # Script → audio → visuals → MP4
-│   ├── youtube.py          # YouTube Data API v3
-│   ├── twitter.py          # Twitter API v2 via tweepy
-│   ├── leads.py            # Google Places + email scraper
-│   └── scheduler.py        # APScheduler + SQLite jobs
-├── tokens/                 # OAuth tokens (gitignored)
-├── shorts/                 # Generated videos
-└── assets/
-    └── cashcrab.png        # Pixel art mascot
-```
-
-## Cost Breakdown
-
-| Component | Cost |
-|-----------|------|
-| AI text generation (scripts, tweets, metadata) | $0 (g4f / your subscriptions) |
-| AI image generation | $0 (g4f) |
-| Text-to-speech | $0 (edge-tts) |
-| Stock video footage | $0 (Pexels free tier) |
-| YouTube upload | $0 (official API) |
-| Twitter posting | $0 (free tier API) |
-| **Total per video** | **$0** |
+An exact `install cashcrab` flow would require publishing the package or wiring a system package manager. The repo is now structured for that path.
 
 ## Configuration
 
-Copy `config.example.json` to `config.json`. Key sections:
+Copy `config.example.json` to `config.json`.
 
-```json
-{
-  "llm": {
-    "provider": "g4f",
-    "model": "gpt-4o-mini"
-  },
-  "tts": {
-    "provider": "edge",
-    "voice": "en-US-ChristopherNeural"
-  },
-  "youtube": {
-    "niche": "productivity tips",
-    "schedule_hours": [9, 15]
-  }
-}
-```
+Main sections:
 
-Full config reference in [`config.example.json`](config.example.json).
+- `llm`: text generation provider and model
+- `tts`: voice and speech rate
+- `youtube`: upload defaults and scheduling
+- `visuals`: `pexels` or `dalle`
+- `twitter`: client credentials and affiliate products
+- `leads`: search targets, SMTP, and outreach template
 
 ## Requirements
 
 - Python 3.10+
-- Google Cloud project with YouTube Data API v3 enabled (for `client_secrets.json`)
-- Twitter Developer account with OAuth 2.0 enabled
-- Optional: Pexels API key (free), Google Places API key
+- YouTube Data API v3 credentials in `client_secrets.json`
+- Twitter / X developer app with OAuth 2.0 enabled
+- Optional Pexels API key for stock footage
+- Optional Google Places API key for lead generation
 
-## Contributing
+## Project Layout
 
-PRs welcome. Keep it modular — each feature is its own file in `modules/`.
+```text
+cashcrab/
+├── main.py
+├── pyproject.toml
+├── config.example.json
+├── modules/
+│   ├── auth.py
+│   ├── config.py
+│   ├── leads.py
+│   ├── scheduler.py
+│   ├── tts.py
+│   ├── twitter.py
+│   ├── ui.py
+│   ├── video.py
+│   └── youtube.py
+├── assets/
+└── shorts/
+```
 
 ## License
 

@@ -14,8 +14,8 @@ def load() -> dict:
         return _cache
 
     if not CONFIG_PATH.exists():
-        print(f"Error: {CONFIG_PATH} not found.")
-        print("Copy config.example.json to config.json and fill in your keys.")
+        print(f"Error: {CONFIG_PATH} was not found.")
+        print("Copy config.example.json to config.json, then open CashCrab again.")
         sys.exit(1)
 
     with open(CONFIG_PATH) as f:
@@ -27,7 +27,7 @@ def section(name: str) -> dict:
     cfg = load()
     s = cfg.get(name)
     if s is None:
-        print(f"Error: '{name}' section missing from config.json")
+        print(f"Error: '{name}' section is missing from config.json.")
         sys.exit(1)
     return s
 

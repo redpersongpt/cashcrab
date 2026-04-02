@@ -22,7 +22,7 @@
   },
   "visuals": {
     "source": "pexels",
-    "_comment": "source: pexels (free stock video) | dalle (AI images via g4f). Set pexels key with: python main.py auth keys"
+    "_comment": "source: pexels (free stock video) | dalle (AI images via g4f). Set the Pexels key inside CashCrab -> Setup -> Save API keys."
   },
   "twitter": {
     "client_id": "",
@@ -37,7 +37,7 @@
         "keywords": ["tech", "audio", "gadgets"]
       }
     ],
-    "_comment": "Get client_id from developer.twitter.com -> OAuth 2.0 settings. Then run: python main.py auth twitter"
+    "_comment": "Get client_id from developer.twitter.com -> OAuth 2.0 settings. Then open CashCrab -> Setup -> Connect Twitter / X."
   },
   "leads": {
     "search_queries": ["plumber", "dentist", "accountant"],
@@ -57,6 +57,6 @@
       "subject": "Quick question about {business_name}",
       "body": "Hi {business_name},\n\nI help local businesses like yours attract more customers through modern digital marketing.\n\nI noticed a few quick wins that could boost your online visibility. Would you be open to a brief call this week?\n\nBest regards,\n{from_name}\n\n---\nTo stop receiving these emails, reply STOP.\n{physical_address}"
     },
-    "_comment": "Set Google Places API key with: python main.py auth keys"
+    "_comment": "Set the Google Places key inside CashCrab -> Setup -> Save API keys."
   }
 }

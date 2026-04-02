@@ -14,6 +14,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
 from modules.config import section, ROOT
+from modules import ui
 
 TOKENS_DIR = ROOT / "tokens"
 TOKENS_DIR.mkdir(exist_ok=True)
@@ -74,16 +75,17 @@ def setup_api_keys():
     }
     keys = json.loads(KEYS_FILE.read_text()) if KEYS_FILE.exists() else {}
 
-    print("API Key Setup (Enter to skip):\n")
+    ui.info("API keys")
+    ui.warn("Press Enter to keep the current value.")
     for svc, label in services.items():
         current = keys.get(svc, "")
         masked = f"...{current[-6:]}" if len(current) > 6 else "(not set)"
-        val = input(f"  {label} [{masked}]: ").strip()
+        val = ui.ask(f"{label} [{masked}]")
         if val:
             keys[svc] = val
 
     KEYS_FILE.write_text(json.dumps(keys, indent=2))
-    print(f"\nSaved to {KEYS_FILE}")
+    ui.success(f"Saved keys to {KEYS_FILE}")
 
 
 # ── YouTube OAuth2 ───────────────────────────────────
@@ -91,10 +93,11 @@ def setup_api_keys():
 def youtube_login():
     cfg = section("youtube")
     secrets_file = cfg.get("client_secrets_file", "client_secrets.json")
+    ui.info("Opening your browser for YouTube login...")
     flow = InstalledAppFlow.from_client_secrets_file(secrets_file, YT_SCOPES)
     creds = flow.run_local_server(port=0)
     YT_TOKEN.write_text(creds.to_json())
-    print(f"  YouTube authorized.")
+    ui.success("YouTube is connected.")
     return creds
 
 
@@ -133,8 +136,8 @@ def twitter_login():
     }
     auth_url = TW_AUTH_URL + "?" + "&".join(f"{k}={v}" for k, v in params.items())
 
-    print(f"  Opening browser for Twitter auth...")
-    print(f"  Manual URL: {auth_url}\n")
+    ui.info("Opening your browser for Twitter / X login...")
+    ui.info(f"If the browser does not open, use this URL:\n{auth_url}")
     webbrowser.open(auth_url)
 
     _callback_result.clear()
@@ -167,7 +170,7 @@ def twitter_login():
         "expires_at": time.time() + tokens.get("expires_in", 7200),
     }
     TW_TOKEN.write_text(json.dumps(store, indent=2))
-    print(f"  Twitter authorized.")
+    ui.success("Twitter / X is connected.")
     return store
 
 
@@ -186,7 +189,7 @@ def _twitter_refresh(store: dict) -> dict:
 
     resp = requests.post(TW_TOKEN_URL, data=data, auth=auth, timeout=15)
     if resp.status_code != 200:
-        print("  Refresh failed, re-authenticating...")
+        ui.warn("Saved Twitter token expired. Reconnecting...")
         return twitter_login()
 
     tokens = resp.json()
@@ -212,51 +215,52 @@ def twitter_access_token() -> str:
 # ── Status ───────────────────────────────────────────
 
 def status():
-    print("=== OAuth ===\n")
+    rows = []
 
     if YT_TOKEN.exists():
         try:
             creds = Credentials.from_authorized_user_file(str(YT_TOKEN), YT_SCOPES)
-            print(f"  YouTube:  {'valid' if creds.valid else 'expired (auto-refresh)'}")
+            status_text = "Connected" if creds.valid else "Expired (auto-refresh)"
+            rows.append(("YouTube", status_text, str(YT_TOKEN)))
         except Exception:
-            print("  YouTube:  corrupt (run: auth youtube)")
+            rows.append(("YouTube", "Corrupt token", "Run cashcrab -> Setup -> Connect YouTube"))
     else:
-        print("  YouTube:  not linked")
+        rows.append(("YouTube", "Not connected", "Run cashcrab -> Setup -> Connect YouTube"))
 
     if TW_TOKEN.exists():
         try:
             s = json.loads(TW_TOKEN.read_text())
             rem = int((s.get("expires_at", 0) - time.time()) / 60)
-            print(f"  Twitter:  {'valid (' + str(rem) + 'm left)' if rem > 0 else 'expired (auto-refresh)'}")
+            status_text = f"Connected ({rem}m left)" if rem > 0 else "Expired (auto-refresh)"
+            rows.append(("Twitter / X", status_text, str(TW_TOKEN)))
         except Exception:
-            print("  Twitter:  corrupt (run: auth twitter)")
+            rows.append(("Twitter / X", "Corrupt token", "Run cashcrab -> Setup -> Connect Twitter / X"))
     else:
-        print("  Twitter:  not linked")
+        rows.append(("Twitter / X", "Not connected", "Run cashcrab -> Setup -> Connect Twitter / X"))
 
-    print("\n=== API Keys ===\n")
-    if KEYS_FILE.exists():
-        for svc, val in json.loads(KEYS_FILE.read_text()).items():
-            masked = f"...{val[-6:]}" if len(val) > 6 else "(empty)"
-            print(f"  {svc:16s} {masked}")
-    else:
-        print("  None stored (run: auth keys)")
+    keys = json.loads(KEYS_FILE.read_text()) if KEYS_FILE.exists() else {}
+    pexels_value = keys.get("pexels", "")
+    google_value = keys.get("google_places", "")
+    rows.append(("Pexels key", "Set" if pexels_value else "Missing", f"...{pexels_value[-6:]}" if pexels_value else "Needed for stock footage"))
+    rows.append(("Google Places key", "Set" if google_value else "Missing", f"...{google_value[-6:]}" if google_value else "Needed for lead finder"))
 
-    print("\n=== LLM ===\n")
     cfg = section("llm")
     provider = cfg.get("provider", "g4f")
     model = cfg.get("model", "gpt-4o-mini")
-    print(f"  Provider: {provider} (uses subscription, no API key)")
-    print(f"  Model:    {model}")
+    rows.append(("LLM", "Ready", f"{provider} / {model}"))
+
+    ui.info("Setup status")
+    ui.status_table(rows)
 
 
 def revoke(service: str):
     targets = {"youtube": YT_TOKEN, "twitter": TW_TOKEN}
     path = targets.get(service)
     if not path:
-        print(f"Unknown: {service}")
+        ui.fail(f"Unknown service: {service}")
         return
     if path.exists():
         path.unlink()
-        print(f"  {service} tokens removed.")
+        ui.success(f"Removed saved login for {service}.")
     else:
-        print(f"  {service}: nothing to remove.")
+        ui.warn(f"No saved login found for {service}.")
