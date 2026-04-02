@@ -13,7 +13,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-from modules.config import section, ROOT
+from modules.config import section, optional_section, ROOT
 from modules import ui
 
 TOKENS_DIR = ROOT / "tokens"
@@ -72,10 +72,12 @@ def setup_api_keys():
     services = {
         "pexels": "Pexels (free stock video)",
         "google_places": "Google Places (lead finder)",
+        "discord_webhook": "Discord webhook (optional)",
+        "slack_webhook": "Slack webhook (optional)",
     }
     keys = json.loads(KEYS_FILE.read_text()) if KEYS_FILE.exists() else {}
 
-    ui.info("API keys")
+    ui.info("Keys and webhooks")
     ui.warn("Press Enter to keep the current value.")
     for svc, label in services.items():
         current = keys.get(svc, "")
@@ -238,13 +240,31 @@ def status():
     else:
         rows.append(("Twitter / X", "Not connected", "Run cashcrab -> Setup -> Connect Twitter / X"))
 
+    try:
+        from modules import tiktok
+
+        rows.append(("TikTok", tiktok.connection_status(), str(tiktok.TT_TOKEN)))
+    except Exception:
+        rows.append(("TikTok", "Not connected", "Run cashcrab -> Setup -> Connect TikTok"))
+
+    try:
+        from modules import instagram
+
+        rows.append(("Instagram", instagram.connection_status(), str(instagram.IG_TOKEN)))
+    except Exception:
+        rows.append(("Instagram", "Not connected", "Run cashcrab -> Setup -> Connect Instagram"))
+
     keys = json.loads(KEYS_FILE.read_text()) if KEYS_FILE.exists() else {}
     pexels_value = keys.get("pexels", "")
     google_value = keys.get("google_places", "")
+    discord_value = keys.get("discord_webhook", "")
+    slack_value = keys.get("slack_webhook", "")
     rows.append(("Pexels key", "Set" if pexels_value else "Missing", f"...{pexels_value[-6:]}" if pexels_value else "Needed for stock footage"))
     rows.append(("Google Places key", "Set" if google_value else "Missing", f"...{google_value[-6:]}" if google_value else "Needed for lead finder"))
+    rows.append(("Discord webhook", "Set" if discord_value else "Optional", f"...{discord_value[-10:]}" if discord_value else "Used for success/error notifications"))
+    rows.append(("Slack webhook", "Set" if slack_value else "Optional", f"...{slack_value[-10:]}" if slack_value else "Used for success/error notifications"))
 
-    cfg = section("llm")
+    cfg = optional_section("llm", {})
     provider = cfg.get("provider", "g4f")
     model = cfg.get("model", "gpt-4o-mini")
     rows.append(("LLM", "Ready", f"{provider} / {model}"))
@@ -255,6 +275,13 @@ def status():
 
 def revoke(service: str):
     targets = {"youtube": YT_TOKEN, "twitter": TW_TOKEN}
+    try:
+        from modules import tiktok, instagram
+
+        targets["tiktok"] = tiktok.TT_TOKEN
+        targets["instagram"] = instagram.IG_TOKEN
+    except Exception:
+        pass
     path = targets.get(service)
     if not path:
         ui.fail(f"Unknown service: {service}")

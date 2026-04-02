@@ -119,7 +119,7 @@ def find_leads(query: str | None = None, location: str | None = None) -> list[di
             try:
                 from modules import analytics, notify
 
-                analytics.track_leads(query=q, location=loc, total=len(businesses), with_email=with_email)
+                analytics.track_lead_search(query=q, location=loc, total=len(businesses), with_email=with_email)
                 notify.leads_found(query=q, location=loc, count=len(businesses), with_email=with_email)
             except Exception:
                 pass
@@ -193,6 +193,7 @@ def send_outreach(leads: list[dict] | None = None, csv_path: str | None = None,
         server.login(smtp_cfg["email"], smtp_cfg["password"])
 
         sent = 0
+        campaign_id = f"{Path(csv_path).stem if csv_path else 'manual'}-{int(time.time())}"
         for l in unique:
             subject = template["subject"].format(
                 business_name=l["name"], from_name=from_name
@@ -219,5 +220,16 @@ def send_outreach(leads: list[dict] | None = None, csv_path: str | None = None,
                 ui.fail(f"Could not send to {l['email']}: {e}")
 
         ui.success(f"Finished. Sent {sent} of {len(unique)} emails.")
+        try:
+            from modules import analytics
+
+            analytics.track_lead_campaign(
+                campaign_id=campaign_id,
+                source=csv_path or "manual",
+                sent=sent,
+            )
+            ui.info(f"Campaign tracked as: {campaign_id}")
+        except Exception:
+            pass
     finally:
         server.quit()

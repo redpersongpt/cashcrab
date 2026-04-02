@@ -2,17 +2,15 @@
 
 import requests
 
-from modules.config import section
+from modules.config import optional_section
+from modules.auth import get_api_key
 
 
 def _webhooks() -> dict:
-    try:
-        cfg = section("notifications")
-    except SystemExit:
-        return {}
+    cfg = optional_section("notifications", {})
     return {
-        "discord": cfg.get("discord_webhook", ""),
-        "slack": cfg.get("slack_webhook", ""),
+        "discord": get_api_key("discord_webhook") or cfg.get("discord_webhook", ""),
+        "slack": get_api_key("slack_webhook") or cfg.get("slack_webhook", ""),
     }
 
 

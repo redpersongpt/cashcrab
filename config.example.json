@@ -39,6 +39,32 @@
     ],
     "_comment": "Get client_id from developer.twitter.com -> OAuth 2.0 settings. Then open CashCrab -> Setup -> Connect Twitter / X."
   },
+  "tiktok": {
+    "client_key": "",
+    "client_secret": "",
+    "oauth_port": 8190,
+    "privacy_level": "SELF_ONLY",
+    "_comment": "Create a TikTok developer app with Content Posting API access, then connect it inside CashCrab -> Setup -> Connect TikTok."
+  },
+  "instagram": {
+    "app_id": "",
+    "app_secret": "",
+    "oauth_port": 8191,
+    "graph_version": "v23.0",
+    "facebook_page_id": "",
+    "public_base_url": "",
+    "_comment": "Meta needs a public MP4 URL for Reel publishing. Set public_base_url if your shorts are hosted somewhere public, or pass --public-url during upload."
+  },
+  "notifications": {
+    "discord_webhook": "",
+    "slack_webhook": "",
+    "_comment": "Optional. You can also save these inside CashCrab -> Setup -> Save keys and webhooks."
+  },
+  "crosspost": {
+    "tiktok": false,
+    "instagram": false,
+    "_comment": "If true, generated Shorts will also try to cross-post after YouTube upload."
+  },
   "leads": {
     "search_queries": ["plumber", "dentist", "accountant"],
     "locations": ["New York, NY", "Los Angeles, CA"],

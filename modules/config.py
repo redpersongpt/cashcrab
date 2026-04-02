@@ -32,6 +32,14 @@ def section(name: str) -> dict:
     return s
 
 
+def optional_section(name: str, default=None):
+    cfg = load()
+    value = cfg.get(name)
+    if value is None:
+        return {} if default is None else default
+    return value
+
+
 def reload():
     global _cache
     _cache = None

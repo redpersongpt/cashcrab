@@ -113,6 +113,22 @@ cashcrab tw organic --topic "productivity"
 cashcrab tw raw "My custom tweet"
 ```
 
+### TikTok cross-posting
+
+Connect TikTok once, then upload any generated Short directly:
+
+```bash
+cashcrab tt upload-latest --title "Daily AI workflow"
+```
+
+### Instagram Reels publishing
+
+Connect your Meta app, then publish a Reel from the newest Short:
+
+```bash
+cashcrab ig upload-latest --caption "Daily AI workflow" --public-url "https://your-site.com/shorts/short.mp4"
+```
+
 ### Lead finder and outreach
 
 Find businesses with Google Places, scrape public emails, export CSVs, and preview or send outreach.
@@ -123,12 +139,26 @@ cashcrab leads outreach --csv leads.csv --dry-run
 cashcrab leads outreach --csv leads.csv --send
 ```
 
+### Notifications and analytics
+
+Save Discord or Slack webhooks in setup if you want upload / tweet / lead notifications.
+
+Use the built-in dashboard for tracked metrics:
+
+```bash
+cashcrab dashboard
+cashcrab dashboard --export analytics.csv
+cashcrab leads campaign-update campaign-123 --opened 12 --replied 3
+```
+
 ### Full autopilot
 
 ```bash
 cashcrab auto --shorts 2 --tweets 5 --find-leads
 cashcrab schedule
 ```
+
+If you enable `crosspost.tiktok` or `crosspost.instagram` in `config.json`, generated Shorts can also fan out after the YouTube upload step.
 
 ## Commands
 
@@ -140,6 +170,12 @@ cashcrab
 │   ├── keys
 │   ├── status
 │   └── revoke
+├── tt
+│   ├── upload
+│   └── upload-latest
+├── ig
+│   ├── upload
+│   └── upload-latest
 ├── yt
 │   ├── generate
 │   ├── upload-all
@@ -178,6 +214,7 @@ cashcrab/
 │   ├── tts.py
 │   ├── twitter.py
 │   ├── ui.py
+│   ├── instagram.py
 │   ├── video.py
 │   └── youtube.py
 ├── assets/
@@ -191,6 +228,8 @@ cashcrab/
 - Twitter / X OAuth credentials in `config.json`
 - optional Pexels key
 - optional Google Places key
+- optional Discord / Slack webhooks
+- optional public MP4 hosting for Instagram Reels publishing
 
 The installer sets up the app. Your platform credentials are still yours to provide.
 

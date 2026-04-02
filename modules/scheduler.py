@@ -15,7 +15,7 @@ def _make_scheduler() -> BlockingScheduler:
 
 
 def _youtube_job():
-    from modules import video, youtube
+    from modules import crosspost, video, youtube
     try:
         result = video.generate_short()
         youtube.upload(
@@ -23,8 +23,15 @@ def _youtube_job():
             result["title"],
             result["description"],
         )
+        crosspost.publish_short(result["video_path"], result["title"], result["description"])
         ui.success(f"Scheduler uploaded a YouTube Short: {result['title']}")
     except Exception as e:
+        try:
+            from modules import notify
+
+            notify.error("scheduler youtube job", str(e))
+        except Exception:
+            pass
         ui.fail(f"Scheduler YouTube job failed: {e}")
 
 
@@ -34,6 +41,12 @@ def _twitter_job():
         twitter.run_batch(count=1, affiliate_ratio=0.3)
         ui.success("Scheduler posted to Twitter / X.")
     except Exception as e:
+        try:
+            from modules import notify
+
+            notify.error("scheduler twitter job", str(e))
+        except Exception:
+            pass
         ui.fail(f"Scheduler Twitter job failed: {e}")
 
 

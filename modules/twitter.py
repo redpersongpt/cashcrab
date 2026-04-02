@@ -11,7 +11,7 @@ from modules import ui
 
 def _client() -> tweepy.Client:
     token = twitter_access_token()
-    return tweepy.Client(token)
+    return tweepy.Client(access_token=token)
 
 
 def post_tweet(text: str, tweet_type: str = "organic") -> str:
