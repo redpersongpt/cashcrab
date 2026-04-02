@@ -5,136 +5,194 @@
 <h1 align="center">CashCrab</h1>
 
 <p align="center">
-  <strong>A colorful terminal app for YouTube Shorts, X posting, and local lead generation.</strong><br>
-  Beginner-first menu by default. Power-user commands still available.
+  <strong>Your claws on autopilot.</strong><br>
+  YouTube Shorts, Twitter affiliate posts, and local lead gen from one terminal app.
 </p>
 
-## Quick Start
+<p align="center">
+  <a href="#quickstart">Quickstart</a> &bull;
+  <a href="#features">Features</a> &bull;
+  <a href="#vs-moneyprinterv2">vs MoneyPrinterV2</a> &bull;
+  <a href="#commands">Commands</a> &bull;
+  <a href="#architecture">Architecture</a>
+</p>
+
+---
+
+## Why CashCrab?
+
+Most money-tool repos are the same mess:
+
+- Selenium glued to random websites until one UI change kills it
+- ten setup steps before you can test one thing
+- docs written like a generic AI landing page
+
+CashCrab is supposed to be simpler:
+
+- **run one install command**
+- **get a real `cashcrab` command in your terminal**
+- **open a menu instead of memorizing flags**
+- **use official APIs where possible**
+
+## vs MoneyPrinterV2
+
+| | MoneyPrinterV2 | CashCrab |
+|---|---|---|
+| YouTube upload | Selenium | Official YouTube API v3 |
+| Twitter posting | Selenium + browser profile hacks | Twitter / X OAuth 2.0 PKCE |
+| AI text gen | Ollama only | `g4f` with GPT / Claude / Gemini routes |
+| TTS | Narrow voice set | `edge-tts` |
+| Scheduler | Fragile | APScheduler + SQLite persistence |
+| Auth flow | Manual and annoying | Browser login + saved tokens |
+| CLI UX | Raw commands only | Menu-first terminal app + commands |
+| Install story | Repo-local | Global `cashcrab` install scripts |
+
+## Quickstart
+
+macOS / Linux / WSL:
 
 ```bash
-git clone https://github.com/YOUR_USER/cashcrab.git
-cd cashcrab
-python3 -m pip install -r requirements.txt
-python3 -m pip install -e .
-cp config.example.json config.json
+curl -fsSL https://raw.githubusercontent.com/redpersongpt/cashcrab/main/scripts/install.sh | bash
 cashcrab
 ```
+
+PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/redpersongpt/cashcrab/main/scripts/install.ps1 | iex
+cashcrab
+```
+
+That install flow does the boring setup work for you:
+
+- checks for Python
+- tries to install missing basics where possible
+- creates a private user-level venv
+- installs CashCrab
+- adds a global `cashcrab` launcher
+- warns you if optional media tools like `ffmpeg` are missing
+
+If `cashcrab` is not found right away, restart the terminal and run it again.
+
+## First Run
 
 Inside the app:
 
 1. Open `Setup accounts and API keys`
-2. Connect YouTube and Twitter / X
-3. Save your Pexels and Google Places keys
-4. Go back and pick the workflow you want
-
-If you do not want the installed command, this still works:
-
-```bash
-python3 main.py
-```
-
-## Why It Is Simpler Now
-
-- Running `cashcrab` opens a numbered menu automatically.
-- Every screen uses the same colorful terminal layout.
-- `0` always goes back.
-- Status, errors, and next steps use plain language.
-- The old command mode still exists for automation and scripts.
-
-## Most Useful Commands
-
-The app is built for the interactive menu first, but these direct commands still work:
-
-```bash
-cashcrab yt generate --topic "5 habits of millionaires"
-cashcrab yt upload-all
-cashcrab tw post --count 3 --affiliate-ratio 0.3
-cashcrab leads find --query "dentist" --location "Miami, FL"
-cashcrab leads outreach --csv leads.csv --dry-run
-cashcrab auto --shorts 1 --tweets 3 --find-leads
-cashcrab schedule
-```
+2. Connect YouTube
+3. Connect Twitter / X
+4. Save your Pexels and Google Places keys
+5. Go back and pick what you want to run
 
 ## Features
 
-### YouTube Shorts
+### Menu-first terminal app
 
-- Generates a topic, script, voiceover, subtitles, visuals, and final video
-- Uploads through the official YouTube API
-- Keeps pending Shorts in `shorts/`
+Run `cashcrab` and it opens a colorful terminal UI with numbered menus, panels, clear prompts, and status screens.
 
-### Twitter / X
+### YouTube Shorts factory
 
-- Posts helpful or affiliate tweets
-- Uses OAuth 2.0 PKCE
-- Adds `#ad` to affiliate tweets automatically
-
-### Local Lead Finder
-
-- Finds businesses with Google Places
-- Scrapes public websites for email addresses
-- Exports leads to CSV
-- Can preview or send outreach emails
-
-### Automation
-
-- One-shot autopilot mode
-- APScheduler-based recurring jobs
-- Simple terminal dashboard for status
-
-## Install Notes
-
-`cashcrab` is now exposed as a real console command through `pyproject.toml`, so local installs work with:
+Generate a topic, script, voiceover, subtitles, visuals, and final vertical video, then upload it through the official API.
 
 ```bash
-python3 -m pip install -e .
+cashcrab yt generate
+cashcrab yt generate --topic "5 habits of millionaires"
+cashcrab yt generate --no-upload
+cashcrab yt upload-all
+cashcrab yt status
 ```
 
-If you want a cleaner global install, `pipx install .` is the next step.
+### Twitter / X affiliate bot
 
-An exact `install cashcrab` flow would require publishing the package or wiring a system package manager. The repo is now structured for that path.
+Post useful tweets, affiliate tweets, or mixed batches. Affiliate posts automatically include `#ad`.
 
-## Configuration
+```bash
+cashcrab tw post --count 5 --affiliate-ratio 0.3
+cashcrab tw affiliate
+cashcrab tw organic --topic "productivity"
+cashcrab tw raw "My custom tweet"
+```
 
-Copy `config.example.json` to `config.json`.
+### Lead finder and outreach
 
-Main sections:
+Find businesses with Google Places, scrape public emails, export CSVs, and preview or send outreach.
 
-- `llm`: text generation provider and model
-- `tts`: voice and speech rate
-- `youtube`: upload defaults and scheduling
-- `visuals`: `pexels` or `dalle`
-- `twitter`: client credentials and affiliate products
-- `leads`: search targets, SMTP, and outreach template
+```bash
+cashcrab leads find --query "dentist" --location "Miami, FL"
+cashcrab leads outreach --csv leads.csv --dry-run
+cashcrab leads outreach --csv leads.csv --send
+```
 
-## Requirements
+### Full autopilot
 
-- Python 3.10+
-- YouTube Data API v3 credentials in `client_secrets.json`
-- Twitter / X developer app with OAuth 2.0 enabled
-- Optional Pexels API key for stock footage
-- Optional Google Places API key for lead generation
+```bash
+cashcrab auto --shorts 2 --tweets 5 --find-leads
+cashcrab schedule
+```
 
-## Project Layout
+## Commands
+
+```text
+cashcrab
+├── auth
+│   ├── youtube
+│   ├── twitter
+│   ├── keys
+│   ├── status
+│   └── revoke
+├── yt
+│   ├── generate
+│   ├── upload-all
+│   └── status
+├── tw
+│   ├── post
+│   ├── affiliate
+│   ├── organic
+│   └── raw
+├── leads
+│   ├── find
+│   └── outreach
+├── dashboard
+├── schedule
+└── auto
+```
+
+## Architecture
 
 ```text
 cashcrab/
 ├── main.py
 ├── pyproject.toml
 ├── config.example.json
+├── scripts/
+│   ├── install.sh
+│   └── install.ps1
 ├── modules/
 │   ├── auth.py
+│   ├── analytics.py
 │   ├── config.py
 │   ├── leads.py
+│   ├── notify.py
 │   ├── scheduler.py
+│   ├── tiktok.py
 │   ├── tts.py
 │   ├── twitter.py
 │   ├── ui.py
 │   ├── video.py
 │   └── youtube.py
 ├── assets/
-└── shorts/
+├── shorts/
+└── tokens/
 ```
+
+## What You Still Need
+
+- `client_secrets.json` for YouTube
+- Twitter / X OAuth credentials in `config.json`
+- optional Pexels key
+- optional Google Places key
+
+The installer sets up the app. Your platform credentials are still yours to provide.
 
 ## License
 
