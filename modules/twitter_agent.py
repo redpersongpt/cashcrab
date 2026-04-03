@@ -255,18 +255,15 @@ def _relevant(text: str) -> bool:
     ]
     has_personal = any(p in lower for p in personal_signals)
 
-    # Must be about dev/tech/AI
-    tech = [
-        "code", "coding", "programming", "developer", "dev ",
-        "javascript", "typescript", "python", "rust", "react",
-        "windows", "linux", "pc", "laptop", "setup",
-        "cpu", "gpu", "ram", "performance",
-        "vscode", "terminal", "git", "docker",
-        "framework", "open source",
-        "ai ", "chatgpt", "copilot", "llm", "prompt",
-        "vibe coding", "ai replace", "ai bubble",
+    # Must be about windows/PC — not general tech
+    windows_kw = [
+        "windows", "pc ", "laptop", "desktop",
+        "cpu", "gpu", "ram", "performance", "optimize",
+        "debloat", "telemetry", "bloat", "services",
+        "task manager", "registry", "boot",
+        "game bar", "update", "slow",
     ]
-    has_tech = any(t in lower for t in tech)
+    has_tech = any(t in lower for t in windows_kw)
 
     return has_personal and has_tech
 
@@ -402,13 +399,13 @@ def _new_release(log: dict) -> str | None:
 
 # Content calendar — different vibes per day
 CONTENT_CALENDAR = {
-    0: "windows",    # Monday: windows facts
-    1: "ai",         # Tuesday: AI takes
-    2: "dev",        # Wednesday: dev opinions
-    3: "windows",    # Thursday: windows facts
-    4: "ai",         # Friday: AI takes
-    5: "dev",        # Saturday: dev culture
-    6: "product",    # Sunday: product showcase
+    0: "services",     # Monday: windows services
+    1: "telemetry",    # Tuesday: telemetry/privacy
+    2: "performance",  # Wednesday: performance tips
+    3: "services",     # Thursday: more services
+    4: "product",      # Friday: oudenOS features
+    5: "telemetry",    # Saturday: privacy
+    6: "performance",  # Sunday: performance
 }
 
 
@@ -417,18 +414,16 @@ def _today_content_type() -> str:
 
 
 TWEET_FORMATS = [
-    # Standard topic tweet
+    # Fact tweet with link
     "write one tweet about: {topic}. include {url}. under 270 chars. just the tweet, no quotes.",
-    # Question format (high engagement)
-    "write a question tweet about: {topic}. ask your followers something specific. under 250 chars. just the tweet.",
-    # Hot take format
-    "write a spicy hot take about: {topic}. be bold but factual. under 250 chars. just the tweet.",
-    # Personal experience format
-    "write a tweet sharing your experience with: {topic}. start with 'i' lowercase. be specific. under 250 chars.",
-    # Thread hook (standalone value)
-    "write a tweet that states a surprising fact about: {topic}. make people want to reply. under 250 chars.",
-    # Engagement bait (legitimate)
-    "write a 'be honest...' or 'unpopular opinion:' tweet about: {topic}. under 250 chars. just the tweet.",
+    # Question (engagement)
+    "write a question about: {topic}. ask followers if they knew this. under 250 chars.",
+    # Hot take
+    "write a bold take about: {topic}. be factual. under 250 chars.",
+    # Personal discovery
+    "write a tweet like you just found out about: {topic}. react naturally. under 250 chars.",
+    # Surprising fact
+    "state a surprising fact about: {topic}. make people want to check for themselves. under 250 chars.",
 ]
 
 
@@ -443,10 +438,10 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
         # Content calendar — bias topic selection by day of week
         content_type = _today_content_type()
         type_keywords = {
-            "windows": ["windows", "service", "telemetry", "game bar", "timer", "ndu", "bloat", "mapsbroker", "fax", "candy"],
-            "ai": ["copilot", "AI", "vibe coding", "gatekeeping", "junior dev", "stackoverflow"],
-            "dev": ["rust", "typescript", "docker", "kubernetes", "monolith", "startup", "side project", "programming language"],
-            "product": [_product().lower(), "scans hardware", "rollback", "optimizer"],
+            "services": ["service", "RetailDemo", "MapsBroker", "fax", "280", "SysMain", "game bar"],
+            "telemetry": ["telemetry", "endpoint", "privacy", "phone home", "ads", "candy crush"],
+            "performance": ["timer", "15.6ms", "ndu", "ram", "cpu", "VBS", "update", "slow"],
+            "product": [_product().lower(), "scans hardware", "rollback", "5mb", "optimizer"],
         }
         kws = type_keywords.get(content_type, [])
         # Prefer topics matching today's content type
@@ -464,66 +459,45 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
 
 
 def _is_reply_worthy(tweet_text: str) -> bool:
-    """Strict check: is this tweet something we should reply to as a dev?"""
+    """STRICT: Only reply to tweets about Windows problems or PC optimization."""
     lower = tweet_text.lower()
 
-    # HARD REJECT — never reply to these
+    # The tweet MUST be about windows/PC problems. Nothing else.
+    windows_signals = [
+        "windows slow", "windows is slow", "pc is slow", "laptop is slow",
+        "debloat", "bloatware", "remove bloat", "clean windows",
+        "optimize windows", "windows optimization", "pc optimization",
+        "best debloat", "debloat tool", "debloating tool",
+        "telemetry", "windows telemetry", "windows privacy", "windows spying",
+        "task manager", "high cpu", "high memory", "high ram",
+        "windows services", "disable services", "services tab",
+        "windows update", "forced update", "update broke",
+        "fresh install", "clean install", "windows bloat",
+        "why is windows", "windows is trash", "windows sucks",
+        "windows 11 slow", "windows 10 slow",
+        "game bar", "xbox game bar",
+        "startup programs", "boot time", "windows boot",
+        "remove cortana", "remove edge", "remove onedrive",
+        "registry", "regedit", "group policy",
+        "how to speed up", "make pc faster", "make windows faster",
+        "too many processes", "background processes",
+    ]
+
+    if not any(s in lower for s in windows_signals):
+        return False
+
+    # Reject brands/bots even if they mention windows
     reject = [
-        "crypto", "nft", "airdrop", "giveaway", "elon", "trump", "biden",
-        "sports", "football", "basketball", "celebrity", "kardashian",
-        "follow me", "check my", "dm me", "subscribe", "onlyfans",
-        "good morning", "gm everyone", "happy birthday", "rip ",
-        "pray for", "god is", "jesus", "allah", "bible",
-        "twitter is cool", "follow back", "like and retweet",
-        "hiring", "we are ", "join us", "apply now",
-        "google play", "app store", "download our",
-        "release notes", "changelog", "v0.", "v1.", "update:",
-        "connectors", "integration", "available on every",
-        "artemis", "launch", "nasa", "space",
-        "inspired", "inspiring", "motivat",
+        "follow me", "dm me", "check my", "subscribe",
+        "giveaway", "airdrop", "crypto",
+        "release notes", "changelog", "we are ",
+        "introducing", "announcing", "download our",
+        "google play", "app store",
     ]
     if any(r in lower for r in reject):
         return False
 
-    # HARD REJECT — known bot/brand accounts topics
-    brand_patterns = [
-        "create videos", "automate your", "boost your",
-        "try our", "check out our", "introducing our",
-        "we are aware", "service center", "overseas",
-    ]
-    if any(b in lower for b in brand_patterns):
-        return False
-
-    # MUST be a PERSONAL tweet about dev/tech/AI — not a brand announcement
-    personal_dev_topics = [
-        "i code", "i built", "i made", "i learned", "i hate",
-        "i love", "i use", "i think", "i switched",
-        "my setup", "my code", "my project", "my laptop", "my pc",
-        "what language", "what framework", "best language", "best framework",
-        "which ide", "which editor", "which os",
-        "anyone else", "am i the only", "unpopular opinion",
-        "hot take", "confession", "be honest",
-        "how do you", "what do you", "do you prefer",
-        "struggling with", "finally got", "just learned",
-        "why is windows", "why does windows", "windows is so",
-        "my windows", "fresh install", "task manager",
-        "debloat", "bloatware", "telemetry", "services tab",
-        # AI discourse
-        "ai will replace", "ai replacing", "ai is going to",
-        "chatgpt can", "copilot is", "vibe coding",
-        "prompt engineer", "ai bubble", "ai hype",
-        "coding is dead", "developers are done", "no more coders",
-        "ai generated", "ai writes code", "ai vs developer",
-        "just use chatgpt", "ai startup", "wrapper around",
-        "ai took my", "learn to code", "should i learn",
-        "ai does it better", "replaced by ai",
-        # general tech opinions
-        "tech industry", "silicon valley", "layoffs",
-        "remote work", "return to office",
-        "open source", "free software",
-        "junior developer", "senior developer",
-    ]
-    return any(p in lower for p in personal_dev_topics)
+    return True
 
 
 def gen_reply(tweet_text: str) -> str | None:
@@ -540,28 +514,8 @@ def gen_reply(tweet_text: str) -> str | None:
         "clean windows", "speed up windows", "windows optimization",
     ])
 
-    # Detect AI discourse
-    is_ai_topic = any(a in tweet_text.lower() for a in [
-        "ai will replace", "ai replacing", "chatgpt", "copilot",
-        "vibe coding", "prompt engineer", "coding is dead",
-        "ai bubble", "ai hype", "ai startup",
-        "ai generated", "no more developer", "ai does it",
-        "ai is useless", "ai sucks", "ai cant code",
-        "learn to code", "bootcamp",
-    ])
-
-    # Generate reply based on context
-    if is_ai_topic:
-        prompt = (
-            f'someone tweeted about AI: "{tweet_text[:200]}"\n\n'
-            f'reply as a pro-AI developer. you USE ai tools daily and love them. '
-            f'if someone hates on AI: defend it with your experience. '
-            f'if someone builds with AI: support them, ask about the project. '
-            f'if someone gatekeeps coding: call it out, AI makes coding accessible. '
-            f'be specific to their point. be funny. '
-            f'do NOT mention {_product()} or any product. under 180 chars.'
-        )
-    elif is_windows_help:
+    # All replies are about Windows — that's our only topic
+    if is_windows_help:
         prompt = (
             f'someone needs help with windows: "{tweet_text[:200]}"\n\n'
             f'give a specific helpful tip. you can casually mention {_product()} ({_url()}) '
@@ -574,9 +528,10 @@ def gen_reply(tweet_text: str) -> str | None:
         )
     else:
         prompt = (
-            f'someone tweeted: "{tweet_text[:200]}"\n\n'
-            f'reply to what THEY said. be specific to their point. '
-            f'do NOT mention any product. just be a helpful dev. under 180 chars.'
+            f'someone tweeted about windows/pc: "{tweet_text[:200]}"\n\n'
+            f'reply with a specific helpful tip about their windows problem. '
+            f'you can mention {_product()} ({_url()}) if they are asking for a tool. '
+            f'if they are just complaining, give a real tip first. under 180 chars.'
         )
 
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
