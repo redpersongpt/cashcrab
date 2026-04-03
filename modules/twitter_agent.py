@@ -292,14 +292,53 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
 
 def gen_reply(tweet_text: str) -> str | None:
     vp, url, name = _voice(), _url(), _product()
+
+    # STEP 1: Check if this tweet is ACTUALLY worth replying to
+    # Must be about Windows, PC optimization, debloat, or related topic
+    # NOT just any tweet that happens to contain "windows" or "microsoft"
+    relevance_prompt = (
+        f'Is this tweet about Windows PC problems, optimization, debloat, performance, '
+        f'telemetry, bloatware, or system tweaks? Not just mentioning Microsoft/Windows in passing.\n\n'
+        f'Tweet: "{tweet_text}"\n\n'
+        f'Reply YES or NO. One word only.'
+    )
+    try:
+        check = llm.generate(relevance_prompt, system="reply YES or NO only")
+        if "NO" in check.upper():
+            return None
+    except Exception:
+        pass
+
+    # STEP 2: Generate reply
     if _roastable(tweet_text):
-        prompt = f'someone tweeted: "{tweet_text}"\n\nroast them with FACTS you are 100% sure about. mention {name} only if natural. under 200 chars. just the reply, no quotes.'
+        prompt = (
+            f'someone tweeted: "{tweet_text}"\n\n'
+            f'roast them with REAL FACTS. be funny and specific to what they said. '
+            f'do NOT mention {name} or any product. just roast. under 200 chars. just the reply.'
+        )
     else:
-        prompt = f'someone tweeted: "{tweet_text}"\n\nhelpful casual reply. mention {url} if relevant, dont force it. under 200 chars. just the reply, no quotes.'
+        prompt = (
+            f'someone tweeted: "{tweet_text}"\n\n'
+            f'reply naturally about the SPECIFIC thing they said. be helpful or funny. '
+            f'ONLY mention {name} ({url}) if the tweet is specifically asking for a tool recommendation. '
+            f'most of the time just reply without promoting anything. '
+            f'DO NOT force {name} into every reply. under 200 chars. just the reply.'
+        )
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if not text or len(text) < 10 or len(text) > 280:
         return None
-    # Skip safety/virality for replies (too slow, 1 LLM call is enough)
+
+    # STEP 3: Reject template-sounding replies
+    bad_patterns = [
+        "kills 220", "kills 280", "blocks 70", "280 services",
+        "oudenOS does", "oudenOS kills", "oudenOS blocks",
+        "github.com/redpersongpt", "ouden.cc",
+    ]
+    # If reply mentions product in EVERY reply, it's spam. Only allow 1 in 4 to mention it.
+    if any(p.lower() in text.lower() for p in bad_patterns):
+        if random.random() > 0.25:  # 75% chance to reject product-heavy replies
+            return None
+
     return text
 
 
