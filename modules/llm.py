@@ -198,14 +198,14 @@ def generate(prompt: str, system: str = "You are a helpful assistant.", max_retr
     codex_on = optional_section("codex_llm", {}).get("enabled", False)
 
     if kind == "qwen_code":
-        # Build fallback chain: g4f first (fastest, no subprocess), then CLI providers
+        # Build fallback chain: gemini first (works on VDS), then others
         providers = []
+        if gemini_on and shutil.which("gemini"):
+            providers.append("gemini")
         if use_g4f:
             providers.append("g4f")
         if codex_on and shutil.which("codex"):
             providers.append("codex")
-        if gemini_on and shutil.which("gemini"):
-            providers.append("gemini")
         providers.append("qwen")
 
         for provider in providers:
