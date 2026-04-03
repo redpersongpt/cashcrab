@@ -425,7 +425,7 @@ def _dismiss_overlays(page):
 
 def _post(page, text: str):
     page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=60000)
-    time.sleep(3)
+    time.sleep(5)
     _dismiss_overlays(page)
     c = page.locator('[data-testid="tweetTextarea_0"]').first
     c.click()
@@ -434,8 +434,9 @@ def _post(page, text: str):
         if idx > 0: page.keyboard.press("Enter")
         if line.strip(): page.keyboard.type(line, delay=random.randint(8, 18))
     time.sleep(2)
-    page.locator('[data-testid="tweetButton"]').click()
-    time.sleep(4)
+    # Use Ctrl+Enter shortcut instead of clicking button (faster, more reliable)
+    page.keyboard.press("Control+Enter")
+    time.sleep(5)
 
 
 def _post_with_image(page, text: str, image_path: str):
@@ -498,7 +499,7 @@ def _quote(page, article, comment: str) -> bool:
     time.sleep(0.3)
     page.keyboard.type(comment, delay=random.randint(8, 15))
     time.sleep(1)
-    page.locator('[data-testid="tweetButton"]').click()
+    page.keyboard.press("Control+Enter")
     time.sleep(4)
     return True
 
@@ -545,7 +546,7 @@ def _post_thread(page, tweets: list[str]):
         time.sleep(1)
 
     # Post all at once
-    page.locator('[data-testid="tweetButton"]').click()
+    page.keyboard.press("Control+Enter")
     time.sleep(5)
 
 
@@ -721,8 +722,8 @@ def _do_mentions(page, log) -> int:
                     time.sleep(0.5)
                     page.keyboard.type(reply, delay=random.randint(8, 15))
                     time.sleep(1)
-                    page.locator('[data-testid="tweetButton"]').click()
-                    time.sleep(3)
+                    page.keyboard.press("Control+Enter")
+                    time.sleep(4)
                     log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": n["text"][:100], "r": reply[:200], "src": "mention"})
                     replied += 1
                     track_action("reply")
