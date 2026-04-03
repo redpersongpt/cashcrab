@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""oudenOS Twitter Agent - 24/7 VDS runner.
+"""CashCrab Twitter Agent - 24/7 VDS runner.
 
-Runs as a PM2 process. Opens Playwright browser, loops forever:
-1. Run one agent cycle (tweet, engage, reply, quote, like)
-2. Sleep 15-30 minutes
-3. Repeat
-
-PM2 handles crash recovery. Agent handles rate limiting internally.
+Runs as PM2 process. Playwright browser loops forever.
+All product-specific config comes from config.json.
 
 Usage:
     pm2 start scripts/agent_runner.py --name twitter-agent --interpreter .venv/bin/python3
@@ -33,7 +29,7 @@ def load_cookies() -> dict:
 
 
 def main():
-    print(f"[{datetime.now().isoformat()}] oudenOS Twitter Agent starting...")
+    print(f"[{datetime.now().isoformat()}] CashCrab Twitter Agent starting...")
     print(f"  24/7 mode. Rate limits enforced internally.")
 
     cookies = load_cookies()
@@ -55,7 +51,6 @@ def main():
         ])
         page = ctx.new_page()
 
-        # Verify login
         page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=30000)
         time.sleep(3)
         title = page.title()
@@ -74,8 +69,7 @@ def main():
 
         while True:
             cycle += 1
-            now = datetime.now()
-            print(f"[{now.isoformat()}] === Cycle {cycle} ===")
+            print(f"[{datetime.now().isoformat()}] === Cycle {cycle} ===")
 
             try:
                 stats = run_cycle(page)
@@ -86,7 +80,6 @@ def main():
                 print(f"  Cycle error: {exc}")
                 traceback.print_exc()
 
-                # If 5 consecutive errors, restart browser
                 if consecutive_errors >= 5:
                     print("  Too many errors, restarting browser...")
                     try:
@@ -94,7 +87,6 @@ def main():
                     except Exception:
                         pass
                     time.sleep(10)
-
                     browser = p.chromium.launch(
                         headless=True,
                         args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
@@ -113,8 +105,8 @@ def main():
                     consecutive_errors = 0
                     print("  Browser restarted.")
 
-            # Sleep 15-30 min between cycles (aggressive but human-like)
-            sleep_min = random.randint(15, 30)
+            from modules.twitter_agent import cycle_sleep_minutes
+            sleep_min = cycle_sleep_minutes()
             print(f"  Next cycle in {sleep_min} min...\n")
             time.sleep(sleep_min * 60)
 

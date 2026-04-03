@@ -17,35 +17,28 @@ def qwen_cli_base_command() -> list[str]:
     custom_command = cfg.get("command", "").strip()
     if custom_command:
         return shlex.split(custom_command)
-
     qwen_bin = shutil.which("qwen")
     if qwen_bin:
         return [qwen_bin]
-
     if shutil.which("npx"):
         return ["npx", "-y", "@qwen-code/qwen-code"]
-
-    raise RuntimeError("Qwen Code CLI was not found. Install Node/npm or switch llm.provider to g4f, ollama, or an OpenAI-compatible provider.")
+    raise RuntimeError("Qwen Code CLI was not found.")
 
 
 def qwen_auth_status() -> tuple[str, str]:
     try:
         result = subprocess.run(
             qwen_cli_base_command() + ["auth", "status"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=20,
+            check=False, capture_output=True, text=True, timeout=20,
         )
     except Exception as exc:
         return "Unavailable", str(exc)
-
     output = (result.stdout or result.stderr or "").strip()
     if "No authentication method configured" in output:
         return "Not connected", "Run cashcrab auth qwen"
     if result.returncode == 0:
         return "Connected", "Qwen OAuth ready"
-    return "Unavailable", output or "Unknown Qwen auth status"
+    return "Unavailable", output or "Unknown"
 
 
 def _client() -> tuple:
@@ -56,126 +49,143 @@ def _client() -> tuple:
 
     if provider == "qwen_code":
         return None, model, "qwen_code"
-
     if provider == "g4f":
         if _client_cache is None:
             _client_cache = G4FClient()
         return _client_cache, model, "g4f"
-
     if provider == "ollama":
         from openai import OpenAI
-
         base = cfg.get("base_url", "http://localhost:11434/v1")
-        client = OpenAI(api_key="ollama", base_url=base)
-        return client, model, "openai"
-
+        return OpenAI(api_key="ollama", base_url=base), model, "openai"
     from openai import OpenAI
-
     api_key = cfg.get("api_key", "")
     base_url = cfg.get("base_url")
     if not api_key:
         from modules.auth import get_api_key
-
         api_key = get_api_key(provider) or ""
-    client = OpenAI(api_key=api_key, **{"base_url": base_url} if base_url else {})
-    return client, model, "openai"
+    return OpenAI(api_key=api_key, **{"base_url": base_url} if base_url else {}), model, "openai"
 
+
+# ─── Provider implementations ─────────────────────────────────────
 
 def _generate_with_qwen(prompt: str, system: str, model: str, max_retries: int) -> str:
     cfg = section("llm")
     auth_type = cfg.get("auth_type", "qwen-oauth")
-    timeout_seconds = int(cfg.get("timeout_seconds", 180))
+    timeout_sec = int(cfg.get("timeout_seconds", 60))
     workspace_dir = ROOT / "codex-workspace"
 
     command = qwen_cli_base_command() + [
-        "--model",
-        model,
-        "--auth-type",
-        auth_type,
-        "--system-prompt",
-        system,
-        "--output-format",
-        "text",
-        prompt,
+        "--model", model, "--auth-type", auth_type,
+        "--system-prompt", system, "--output-format", "text", prompt,
     ]
-
     for attempt in range(max_retries):
         try:
             result = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
+                command, check=False, capture_output=True, text=True,
+                timeout=timeout_sec,
                 cwd=str(workspace_dir) if workspace_dir.exists() else None,
             )
             if result.returncode == 0:
                 return (result.stdout or "").strip()
-
-            error = (result.stderr or result.stdout or "").strip()
-            raise RuntimeError(error or "Qwen Code returned a non-zero exit code.")
+            raise RuntimeError((result.stderr or result.stdout or "").strip() or "Non-zero exit")
+        except subprocess.TimeoutExpired:
+            if attempt == max_retries - 1:
+                raise RuntimeError(f"Qwen timed out ({timeout_sec}s)")
         except Exception as exc:
             if attempt == max_retries - 1:
-                raise RuntimeError(f"Qwen generation failed: {exc}") from exc
-            wait = 2 ** attempt
-            print(f"  Qwen error (retry {attempt + 1}/{max_retries}): {exc}")
-            time.sleep(wait)
-
+                raise
+            print(f"  Qwen error (retry {attempt+1}/{max_retries}): {exc}")
+            time.sleep(2 ** attempt)
     return ""
 
 
 def _generate_with_gemini(prompt: str, system: str, max_retries: int) -> str:
-    """Generate text using Gemini CLI as subprocess."""
     gemini_bin = shutil.which("gemini")
     if not gemini_bin:
-        raise RuntimeError("Gemini CLI not found. Install with: npm install -g @google/gemini-cli")
-
+        raise RuntimeError("Gemini CLI not found")
     full_prompt = f"{system}\n\n{prompt}"
-
     for attempt in range(max_retries):
         try:
             result = subprocess.run(
-                [gemini_bin, "-p", "respond with only the requested text. no markdown formatting. no backticks. no explanations."],
-                input=full_prompt,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=60,
+                [gemini_bin, "-p", "respond with only the requested text. no markdown. no backticks."],
+                input=full_prompt, check=False, capture_output=True, text=True, timeout=45,
             )
-            output = (result.stdout or "").strip()
-            # Strip gemini CLI noise
-            lines = [l for l in output.split("\n") if not l.startswith("Keychain") and not l.startswith("Using FileKeychain") and not l.startswith("Loaded cached")]
+            lines = [l for l in (result.stdout or "").split("\n")
+                     if not l.startswith(("Keychain", "Using FileKeychain", "Loaded cached"))]
             clean = "\n".join(lines).strip()
             if clean:
                 return clean
             if result.returncode != 0:
-                raise RuntimeError((result.stderr or "").strip() or "Gemini returned non-zero")
+                raise RuntimeError((result.stderr or "").strip()[:200] or "Gemini non-zero")
+        except subprocess.TimeoutExpired:
+            if attempt == max_retries - 1:
+                raise RuntimeError("Gemini timed out (45s)")
         except Exception as exc:
             if attempt == max_retries - 1:
-                raise RuntimeError(f"Gemini generation failed: {exc}") from exc
+                raise
             time.sleep(2 ** attempt)
-
     return ""
 
 
-def _gemini_available() -> bool:
-    return shutil.which("gemini") is not None
+def _generate_with_codex(prompt: str, system: str, max_retries: int) -> str:
+    codex_bin = shutil.which("codex")
+    if not codex_bin:
+        raise RuntimeError("Codex CLI not found")
+    full = f"{system}\n\n{prompt}\n\nRespond with ONLY the requested text. No markdown."
+    for attempt in range(max_retries):
+        try:
+            result = subprocess.run(
+                [codex_bin, "-q", "--model", "o4-mini", "-a", "ask",
+                 "--no-project-doc", full],
+                check=False, capture_output=True, text=True, timeout=30,
+            )
+            output = (result.stdout or "").strip()
+            if output:
+                return output
+            if result.returncode != 0:
+                raise RuntimeError((result.stderr or "").strip()[:200] or "Codex non-zero")
+        except subprocess.TimeoutExpired:
+            if attempt == max_retries - 1:
+                raise RuntimeError("Codex timed out (30s)")
+        except Exception as exc:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(2 ** attempt)
+    return ""
 
 
-def generate(prompt: str, system: str = "You are a helpful assistant.", max_retries: int = 3) -> str:
+# ─── Main generate with triple-LLM fallback ──────────────────────
+
+def generate(prompt: str, system: str = "You are a helpful assistant.", max_retries: int = 2) -> str:
     client, model, kind = _client()
 
-    # Dual-LLM mode: randomly pick Gemini or Qwen for variety
-    gemini_cfg = optional_section("gemini", {})
-    use_gemini = gemini_cfg.get("enabled", False) and _gemini_available()
+    gemini_on = optional_section("gemini", {}).get("enabled", False)
+    codex_on = optional_section("codex_llm", {}).get("enabled", False)
 
-    if use_gemini and kind == "qwen_code":
-        # 40% gemini, 60% qwen — gemini for variety, qwen as workhorse
-        if random.random() < 0.4:
+    if kind == "qwen_code" and (gemini_on or codex_on):
+        # Build weighted pool: codex 40% (fastest), gemini 30%, qwen 30%
+        pool = []
+        if codex_on and shutil.which("codex"):
+            pool.extend(["codex"] * 4)
+        if gemini_on and shutil.which("gemini"):
+            pool.extend(["gemini"] * 3)
+        pool.extend(["qwen"] * 3)
+
+        chosen = random.choice(pool) if pool else "qwen"
+        fallback_order = [chosen] + [p for p in ["codex", "gemini", "qwen"] if p != chosen]
+
+        for provider in fallback_order:
             try:
-                return _generate_with_gemini(prompt, system, max_retries)
-            except Exception:
-                pass  # fallback to qwen
+                if provider == "codex":
+                    return _generate_with_codex(prompt, system, max_retries)
+                elif provider == "gemini":
+                    return _generate_with_gemini(prompt, system, max_retries)
+                else:
+                    return _generate_with_qwen(prompt, system, model, max_retries)
+            except Exception as exc:
+                print(f"  [{provider}] failed, trying next: {exc}")
+                continue
+        raise RuntimeError("All LLM providers failed")
 
     if kind == "qwen_code":
         return _generate_with_qwen(prompt, system, model, max_retries)
@@ -184,18 +194,13 @@ def generate(prompt: str, system: str = "You are a helpful assistant.", max_retr
         try:
             resp = client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             )
             return resp.choices[0].message.content.strip()
         except Exception as exc:
             if attempt == max_retries - 1:
                 raise
-            wait = 2 ** attempt
-            print(f"  LLM error (retry {attempt + 1}/{max_retries}): {exc}")
-            time.sleep(wait)
+            time.sleep(2 ** attempt)
     return ""
 
 
@@ -203,11 +208,9 @@ def generate_json(
     prompt: str,
     system: str = "You are a helpful assistant. Always respond with valid JSON only, no markdown.",
 ) -> dict | list:
-    raw = generate(prompt, system)
-    raw = raw.strip()
+    raw = generate(prompt, system).strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[-1]
     if raw.endswith("```"):
         raw = raw.rsplit("```", 1)[0]
-    raw = raw.strip()
-    return json.loads(raw)
+    return json.loads(raw.strip())
