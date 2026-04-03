@@ -92,7 +92,9 @@ def _do_playwright_post(ct0: str, auth_token: str, text: str, reply_to_url: str 
                     page.keyboard.type(line, delay=random.randint(8, 18))
 
             time.sleep(2)
-            page.keyboard.press("Control+Enter")
+            # Click Post button with force (Ctrl+Enter doesn't work)
+            post_btn = page.locator('[data-testid="tweetButton"]')
+            post_btn.click(force=True, timeout=10000)
             time.sleep(5)
 
             browser.close()
