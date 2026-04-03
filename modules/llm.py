@@ -136,7 +136,7 @@ def _generate_with_codex(prompt: str, system: str, max_retries: int) -> str:
         try:
             result = subprocess.run(
                 [codex_bin, "exec", "--model", "o4-mini",
-                 "-c", "approval_policy=full-auto", full],
+                 "-c", "approval_policy=never", full],
                 check=False, capture_output=True, text=True, timeout=30,
             )
             output = (result.stdout or "").strip()
