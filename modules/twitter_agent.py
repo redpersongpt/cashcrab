@@ -220,33 +220,51 @@ def _spam(text: str) -> bool:
 
 
 def _relevant(text: str) -> bool:
-    """Check if tweet is about dev/tech topics we care about. For likes."""
+    """Strict check for likes. Only like PERSONAL dev tweets, not brands."""
     if len(text) < 20 or _spam(text):
         return False
     lower = text.lower()
-    # Reject non-tech
+
+    # REJECT brands, promos, announcements
     reject = [
         "crypto", "nft", "giveaway", "follow me", "dm me", "pray", "god",
         "sports", "football", "basketball", "celebrity", "birthday",
         "twitter is cool", "follow back", "release notes", "changelog",
-        "google play", "app store", "hiring", "join us",
+        "google play", "app store", "hiring", "join us", "apply now",
         "service center", "overseas", "artemis", "nasa",
         "connectors", "available on every", "create videos",
-        "automate your", "boost your", "try our",
+        "automate your", "boost your", "try our", "check out our",
+        "introducing", "announcing", "launched", "just dropped",
+        "alternative to", "subscribe", "sign up", "free trial",
+        "tokens launched", "$1", "update:", "december update",
+        "looking for an", "are you looking",
     ]
     if any(r in lower for r in reject):
         return False
-    # Must have PERSONAL dev/tech content
-    good = [
-        "code", "coding", "programming", "developer",
+
+    # Must contain FIRST PERSON or QUESTION (personal tweet, not brand)
+    personal_signals = [
+        "i ", "i'm", "i've", "my ", "me ", "we ",
+        "?",  # questions are good
+        "just built", "just made", "just learned", "just finished",
+        "struggling", "finally", "anyone else", "am i the only",
+        "hot take", "unpopular opinion", "be honest", "confession",
+        "what's your", "what do you", "how do you", "which ",
+    ]
+    has_personal = any(p in lower for p in personal_signals)
+
+    # Must be about dev/tech
+    tech = [
+        "code", "coding", "programming", "developer", "dev ",
         "javascript", "typescript", "python", "rust", "react",
         "windows", "linux", "pc", "laptop", "setup",
-        "cpu", "gpu", "ram", "performance", "optimize",
+        "cpu", "gpu", "ram", "performance",
         "vscode", "terminal", "git", "docker",
-        "framework", "open source", "built", "made", "learned",
-        "hot take", "unpopular opinion", "be honest",
+        "framework", "open source",
     ]
-    return any(g in lower for g in good)
+    has_tech = any(t in lower for t in tech)
+
+    return has_personal and has_tech
 
 
 def _roastable(text: str) -> bool:
