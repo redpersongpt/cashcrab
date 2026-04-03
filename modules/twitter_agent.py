@@ -183,7 +183,7 @@ def _check_quality(text: str) -> tuple[bool, bool]:
     try:
         result = llm.generate(prompt, system="reply with exactly: SAFE/UNSAFE then a number 1-10. nothing else.")
         parts = result.strip().split()
-        safe = "UNSAFE" not in parts[0].upper() if parts else True
+        safe = "UNSAFE" not in parts[0].upper() if parts else False
         score = 5
         for p in parts:
             digits = "".join(c for c in p if c.isdigit())
@@ -191,8 +191,9 @@ def _check_quality(text: str) -> tuple[bool, bool]:
                 score = int(digits[:2])
                 break
         return safe, score >= 5
-    except Exception:
-        return True, True
+    except Exception as exc:
+        print(f"  [quality] LLM failed, blocking post: {exc}")
+        return False, False  # fail closed — don't post if we can't verify
 
 
 def _safe(text: str) -> bool:
@@ -374,7 +375,7 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
     if len(text) > 280: text = text[:277]
     if not text or len(text) < 30:
         return None
-    if not _safe(text) or not _viral(text):
+    if not _safe_and_viral(text):
         return None
     return text
 
@@ -449,21 +450,7 @@ def gen_reply(tweet_text: str) -> str | None:
     if not _is_reply_worthy(tweet_text):
         return None
 
-    # GATE 2: LLM relevance check - is this a tweet we can add value to?
-    check_prompt = (
-        f'Can a developer who knows Windows internals and programming '
-        f'add genuine value to this conversation? Not by promoting a product, '
-        f'but by sharing knowledge or opinion?\n\n'
-        f'Tweet: "{tweet_text[:200]}"\n\nYES or NO only.'
-    )
-    try:
-        check = llm.generate(check_prompt, system="reply YES or NO. one word.")
-        if "NO" in check.upper():
-            return None
-    except Exception:
-        return None
-
-    # GATE 3: Is this specifically about Windows optimization? (determines if we can mention product)
+    # GATE 2: Is this specifically about Windows optimization? (determines if we can mention product)
     is_windows_help = any(w in tweet_text.lower() for w in [
         "debloat", "optimize windows", "windows slow", "windows bloat",
         "remove bloatware", "windows services", "windows telemetry",
@@ -592,7 +579,7 @@ def gen_thread() -> list[str] | None:
     parts = [p for p in parts[:5] if len(p) > 20 and len(p) <= 280]
     if len(parts) < 3:
         return None
-    if not _safe(parts[0]) or not _viral(parts[0]):
+    if not _safe_and_viral(parts[0]):
         return None
     return parts
 
@@ -1077,11 +1064,19 @@ def _recent_tweet_texts(log: dict, days: int = 1) -> set[str]:
 def run_cycle_http() -> dict:
     """Full cycle using only HTTP API (curl_cffi). No browser needed."""
     from modules.http_twitter import HttpTwitter
+    from modules.config import reload as reload_config
+
+    # Hot-reload config each cycle
+    reload_config()
 
     log = _load_log()
     stats = {"tweets": 0, "replies": 0, "likes": 0, "retweets": 0}
-    api = HttpTwitter()
+    api = HttpTwitter()  # single instance for entire cycle (dedup works!)
     recent_texts = _recent_tweet_texts(log)
+
+    # Fetch timeline ONCE, reuse for all activities
+    timeline = api.home_timeline(30)
+    print(f"  timeline: {len(timeline)} tweets")
 
     # Release check
     new_rel = _new_release(log)
@@ -1133,7 +1128,7 @@ def run_cycle_http() -> dict:
                         print(f"  [tweet] POSTED {tid}")
 
             elif activity == "like" and can_like(log):
-                tweets = api.home_timeline(30)
+                tweets = timeline
                 for t in tweets:
                     if not can_like(log):
                         break
@@ -1152,11 +1147,13 @@ def run_cycle_http() -> dict:
                     time.sleep(random.uniform(2, 6))
 
             elif activity == "reply" and can_reply(log) and api.can_post:
-                tweets = api.home_timeline(30)
+                tweets = timeline
                 for t in tweets:
                     if not can_reply(log) or not api.can_post:
                         break
                     if api.already_engaged(t["id"]):
+                        continue
+                    if api.is_blacklisted(t.get("user", "")):
                         continue
                     if not _is_reply_worthy(t["text"]):
                         continue
@@ -1182,7 +1179,7 @@ def run_cycle_http() -> dict:
                         break  # max 1 reply per sub-activity
 
             elif activity == "retweet" and api.can_post:
-                tweets = api.home_timeline(20)
+                tweets = timeline
                 for t in tweets:
                     if api.already_engaged(t["id"]):
                         continue
@@ -1200,8 +1197,7 @@ def run_cycle_http() -> dict:
                     break
 
             elif activity == "follow":
-                # Follow authors of good tweets we liked
-                tweets = api.home_timeline(20)
+                tweets = timeline
                 followed = 0
                 for t in tweets:
                     if followed >= 2:

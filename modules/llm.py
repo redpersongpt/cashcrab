@@ -119,7 +119,7 @@ def _generate_with_gemini(prompt: str, system: str, max_retries: int) -> str:
                 raise RuntimeError((result.stderr or "").strip()[:200] or "Gemini non-zero")
         except subprocess.TimeoutExpired:
             if attempt == max_retries - 1:
-                raise RuntimeError("Gemini timed out (45s)")
+                raise RuntimeError("Gemini timed out (90s)")
         except Exception as exc:
             if attempt == max_retries - 1:
                 raise
@@ -222,9 +222,6 @@ def generate(prompt: str, system: str = "You are a helpful assistant.", max_retr
                 print(f"  [{provider}] failed, trying next: {exc}")
                 continue
         raise RuntimeError("All LLM providers failed")
-
-    if kind == "qwen_code":
-        return _generate_with_qwen(prompt, system, model, max_retries)
 
     for attempt in range(max_retries):
         try:

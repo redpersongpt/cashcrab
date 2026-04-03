@@ -13,6 +13,8 @@ from curl_cffi.requests import Session
 from modules.config import ROOT
 
 COOKIES_PATH = ROOT / "tokens" / "twitter_cookies.json"
+ENGAGED_PATH = ROOT / "engaged_ids.json"
+BLACKLIST_PATH = ROOT / "blacklist.json"
 BEARER = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs=1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
 
 FEATURES = {
@@ -57,7 +59,8 @@ class HttpTwitter:
         self._session.cookies.set("ct0", self._ct0, domain=".x.com")
         self._session.cookies.set("auth_token", self._at, domain=".x.com")
         self._daily_limit_hit = False
-        self._engaged_ids: set[str] = set()  # dedup
+        self._engaged_ids: dict[str, bool] = self._load_engaged()
+        self._blacklist: set[str] = self._load_blacklist()
 
     def _headers(self) -> dict:
         return {
@@ -72,24 +75,61 @@ class HttpTwitter:
 
     def _refresh_ct0(self, response):
         """Auto-refresh ct0 from response cookies."""
-        for cookie in getattr(response, 'cookies', {}).items() if hasattr(response, 'cookies') else []:
-            if cookie[0] == 'ct0':
-                self._ct0 = cookie[1]
-                self._session.cookies.set("ct0", self._ct0, domain=".x.com")
-                # Save to file
-                cookies = json.loads(COOKIES_PATH.read_text())
-                cookies["ct0"] = self._ct0
-                COOKIES_PATH.write_text(json.dumps(cookies, indent=2))
-                break
+        try:
+            if not hasattr(response, 'cookies'):
+                return
+            for name, value in response.cookies.items():
+                if name == 'ct0' and value and value != self._ct0:
+                    self._ct0 = value
+                    self._session.cookies.set("ct0", self._ct0, domain=".x.com")
+                    cookies = json.loads(COOKIES_PATH.read_text())
+                    cookies["ct0"] = self._ct0
+                    COOKIES_PATH.write_text(json.dumps(cookies, indent=2))
+                    break
+        except Exception:
+            pass
+
+    def _load_engaged(self) -> dict:
+        if ENGAGED_PATH.exists():
+            try:
+                data = json.loads(ENGAGED_PATH.read_text())
+                if isinstance(data, dict):
+                    return data
+                return {k: True for k in data} if isinstance(data, list) else {}
+            except Exception:
+                pass
+        return {}
+
+    def _save_engaged(self):
+        # Keep last 300 entries
+        keys = list(self._engaged_ids.keys())
+        if len(keys) > 300:
+            self._engaged_ids = {k: True for k in keys[-300:]}
+        try:
+            ENGAGED_PATH.write_text(json.dumps(list(self._engaged_ids.keys())))
+        except Exception:
+            pass
+
+    def _load_blacklist(self) -> set:
+        if BLACKLIST_PATH.exists():
+            try:
+                return set(json.loads(BLACKLIST_PATH.read_text()))
+            except Exception:
+                pass
+        return set()
+
+    def is_blacklisted(self, username: str) -> bool:
+        return username.lower() in self._blacklist
 
     def already_engaged(self, tweet_id: str) -> bool:
         return tweet_id in self._engaged_ids
 
     def mark_engaged(self, tweet_id: str):
-        self._engaged_ids.add(tweet_id)
-        # Keep set manageable
+        self._engaged_ids[tweet_id] = True
         if len(self._engaged_ids) > 500:
-            self._engaged_ids = set(list(self._engaged_ids)[-200:])
+            keys = list(self._engaged_ids.keys())
+            self._engaged_ids = {k: True for k in keys[-300:]}
+        self._save_engaged()
 
     @property
     def can_post(self) -> bool:
