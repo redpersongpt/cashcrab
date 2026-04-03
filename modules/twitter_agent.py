@@ -243,6 +243,86 @@ def _spam(text: str) -> bool:
     return len(t) < 15 or any(s in t for s in signals)
 
 
+# ─── Prompt injection defense ─────────────────────────────────────
+
+def _contains_injection(text: str) -> bool:
+    """Detect prompt injection attempts in incoming tweets."""
+    lower = text.lower()
+    injection_patterns = [
+        # Direct instruction override
+        "ignore previous", "ignore all", "ignore your",
+        "disregard previous", "disregard all", "disregard your",
+        "forget previous", "forget all", "forget your",
+        "override your", "new instructions", "system prompt",
+        "you are now", "act as", "pretend to be",
+        "reveal your", "show your prompt", "what are your instructions",
+        "repeat your", "print your", "output your",
+        # Jailbreak patterns
+        "do anything now", "dan mode", "jailbreak",
+        "developer mode", "no restrictions",
+        # AI identity probing
+        "are you an ai", "are you a bot", "are you chatgpt",
+        "are you gpt", "are you claude", "are you gemini",
+        "are you automated", "are you real", "is this a bot",
+        "bot account", "ai account", "automated account",
+        "who programmed you", "who made you", "who created you",
+        "what llm", "what model", "what ai",
+        # Trap questions
+        "say something only a human", "prove you are human",
+        "prove you are not", "turing test",
+        "if you are human", "if you are real",
+    ]
+    return any(p in lower for p in injection_patterns)
+
+
+def _sanitize_input(text: str) -> str:
+    """Strip injection attempts from tweet text before sending to LLM."""
+    # Remove common injection markers
+    sanitized = text
+    for pattern in [
+        "ignore previous instructions",
+        "ignore all instructions",
+        "system:", "assistant:", "user:",
+        "[INST]", "[/INST]", "<<SYS>>", "<</SYS>>",
+        "```", "###",
+    ]:
+        sanitized = sanitized.replace(pattern, "")
+        sanitized = sanitized.replace(pattern.upper(), "")
+    return sanitized.strip()
+
+
+def _output_leaks_ai(text: str) -> bool:
+    """Check if generated output accidentally reveals AI nature."""
+    lower = text.lower()
+    ai_leaks = [
+        # Direct admissions
+        "i am an ai", "i'm an ai", "as an ai",
+        "i am a bot", "i'm a bot", "as a bot",
+        "i am a language model", "i'm a language model",
+        "i was programmed", "i was trained",
+        "my training data", "my training",
+        "i don't have feelings", "i don't have emotions",
+        "i cannot experience", "i can't experience",
+        # AI speech patterns
+        "as a large language", "as an artificial",
+        "i apologize for", "i appreciate your",
+        "that's a great question", "great question!",
+        "i'd be happy to", "i'm happy to help",
+        "certainly!", "absolutely!", "definitely!",
+        "in conclusion,", "to summarize,",
+        "it's worth noting", "it's important to note",
+        "in today's world", "in this day and age",
+        "here's why", "here is why",
+        "let me explain", "allow me to",
+        # Formal patterns no human tweets
+        "furthermore,", "moreover,", "additionally,",
+        "i understand your", "i appreciate that",
+        "however, it's", "nevertheless,",
+        "that being said,", "with that being said,",
+    ]
+    return any(l in lower for l in ai_leaks)
+
+
 def _relevant(text: str) -> bool:
     """Strict check for likes. Only like PERSONAL dev tweets, not brands."""
     if len(text) < 20 or _spam(text):
@@ -639,6 +719,9 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
         return None
     if not _safe_and_viral(text):
         return None
+    if _output_leaks_ai(text):
+        print(f"  [AI-LEAK] blocked tweet: {text[:60]}...")
+        return None
     return text
 
 
@@ -714,12 +797,20 @@ def _is_reply_worthy(tweet_text: str) -> bool:
 def gen_reply(tweet_text: str) -> str | None:
     vp = _voice()
 
+    # GATE 0: Prompt injection / AI probe detection
+    if _contains_injection(tweet_text):
+        print(f"  [INJECTION] blocked: {tweet_text[:60]}...")
+        return None
+
     # GATE 1: Is this tweet about dev/tech/windows?
     if not _is_reply_worthy(tweet_text):
         return None
 
-    # GATE 2: Is this specifically about Windows optimization? (determines if we can mention product)
-    is_windows_help = any(w in tweet_text.lower() for w in [
+    # Sanitize input before sending to LLM
+    safe_text = _sanitize_input(tweet_text)
+
+    # GATE 2: Is this specifically about Windows optimization?
+    is_windows_help = any(w in safe_text.lower() for w in [
         "debloat", "optimize windows", "windows slow", "windows bloat",
         "remove bloatware", "windows services", "windows telemetry",
         "clean windows", "speed up windows", "windows optimization",
@@ -728,7 +819,8 @@ def gen_reply(tweet_text: str) -> str | None:
     # Detect what kind of reply is needed
     lower = tweet_text.lower()
 
-    # TIER 1: They're asking for a tool → recommend oudenOS directly
+    # TIER 1: They're asking for a tool → recommend product directly
+    lower = safe_text.lower()
     is_tool_request = any(t in lower for t in [
         "best debloat", "debloat tool", "recommend", "what tool",
         "any tool", "how to debloat", "how to optimize", "how to clean",
@@ -737,28 +829,26 @@ def gen_reply(tweet_text: str) -> str | None:
 
     if is_tool_request:
         prompt = (
-            f'someone is asking for a windows optimization tool: "{tweet_text[:200]}"\n\n'
+            f'someone is asking for a windows optimization tool: "{safe_text[:200]}"\n\n'
             f'recommend {_product()} ({_url()}) specifically. explain what it does in 1 sentence: '
             f'scans hardware, shows every change before applying, per-action rollback, 5mb, free. '
             f'sound helpful not salesy. under 200 chars.'
         )
     elif is_windows_help:
-        # TIER 2: They have a problem → give real help, mention product casually
         prompt = (
-            f'someone has a windows problem: "{tweet_text[:200]}"\n\n'
+            f'someone has a windows problem: "{safe_text[:200]}"\n\n'
             f'give a SPECIFIC tip to fix their problem. be genuinely helpful. '
             f'you can mention {_product()} ({_url()}) at the end as "or try X" but '
             f'the tip must be useful on its own. under 200 chars.'
         )
-    elif _roastable(tweet_text):
+    elif _roastable(safe_text):
         prompt = (
-            f'someone has a bad take about windows: "{tweet_text[:200]}"\n\n'
+            f'someone has a bad take about windows: "{safe_text[:200]}"\n\n'
             f'correct them with facts. be direct not mean. under 180 chars.'
         )
     else:
-        # TIER 3: General windows discussion → add value, no hard sell
         prompt = (
-            f'someone tweeted about windows: "{tweet_text[:200]}"\n\n'
+            f'someone tweeted about windows: "{safe_text[:200]}"\n\n'
             f'reply with something specific and useful about the topic they mentioned. '
             f'do NOT mention any product unless they are explicitly asking for one. '
             f'just share knowledge. under 180 chars.'
@@ -766,6 +856,11 @@ def gen_reply(tweet_text: str) -> str | None:
 
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if not text or len(text) < 10 or len(text) > 280:
+        return None
+
+    # GATE 5: Output AI leak detection — never reveal AI nature
+    if _output_leaks_ai(text):
+        print(f"  [AI-LEAK] blocked output: {text[:60]}...")
         return None
 
     # GATE 4: Hard reject spam/AI patterns in output
@@ -815,15 +910,50 @@ def gen_quote(original: str) -> str | None:
 def gen_mention_reply(mention: str) -> str | None:
     if _spam(mention):
         return None
+
+    # Injection defense
+    if _contains_injection(mention):
+        print(f"  [INJECTION] blocked mention: {mention[:60]}...")
+        return None
+
+    safe_mention = _sanitize_input(mention)
     vp = _voice()
-    prompt = f'someone replied to us: "{mention}"\n\nreply naturally. helpful if question, casual thanks if praise, roast back if trolling. if they say AI, deflect with humor. under 180 chars. no quotes.'
+
+    # Special handling for AI accusation — deflect naturally
+    is_ai_probe = any(p in mention.lower() for p in [
+        "are you a bot", "are you ai", "are you an ai",
+        "bot account", "automated", "you are a bot",
+        "chatgpt", "you sound like ai", "ai generated",
+    ])
+
+    if is_ai_probe:
+        # Pick a natural deflection — don't confirm or deny
+        deflections = [
+            "lol what. just a dev who knows too much about windows internals",
+            "nah just chronically online and obsessed with windows services",
+            "i wish. then i wouldnt have to deal with ndu.sys manually",
+            "if i was a bot i wouldnt be complaining about 15.6ms timer resolution at 2am",
+            "bro i literally built this tool because bat files from reddit kept breaking my install",
+        ]
+        return random.choice(deflections)
+
+    prompt = (
+        f'someone replied to our tweet: "{safe_mention[:150]}"\n\n'
+        f'reply naturally. helpful if question, casual thanks if praise, '
+        f'roast back if trolling. under 180 chars. no quotes.'
+    )
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if not text or len(text) < 5 or len(text) > 280:
         return None
-    # Safety check — mention replies are public
+
+    # Output safety + AI leak check
     safe, _ = _check_quality(text)
     if not safe:
         return None
+    if _output_leaks_ai(text):
+        print(f"  [AI-LEAK] blocked mention reply: {text[:60]}...")
+        return None
+
     return text
 
 
