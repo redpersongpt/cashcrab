@@ -893,15 +893,18 @@ def run_cycle_hybrid(cookies: dict, pw_post_fn) -> dict:
                         break
                     if not _relevant(t["text"]) or _spam(t["text"]):
                         continue
+                    if not t.get("user"):
+                        continue
                     if random.random() > 0.40:
                         continue
 
                     reply = gen_reply(t["text"])
                     if reply:
-                        print(f"  [reply] to @{t['user']}: {reply[:60]}...")
-                        tweet_url = f"https://x.com/i/status/{t['id']}"
-                        if pw_post_fn(cookies, reply, reply_to_url=tweet_url):
-                            log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": t["text"][:100], "r": reply[:200]})
+                        # Post as @mention tweet (compose/post with @username prefix)
+                        mention_text = f"@{t['user']} {reply}"
+                        print(f"  [reply] {mention_text[:70]}...")
+                        if pw_post_fn(cookies, mention_text):
+                            log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": t["text"][:100], "r": reply[:200], "user": t["user"]})
                             stats["replies"] += 1
                             track_action("reply")
                         time.sleep(random.uniform(10, 25))

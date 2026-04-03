@@ -63,13 +63,9 @@ def _do_playwright_post(ct0: str, auth_token: str, text: str, reply_to_url: str 
         page = ctx.new_page()
 
         try:
-            if reply_to_url:
-                # Navigate to tweet, find reply box
-                page.goto(reply_to_url, wait_until="domcontentloaded", timeout=60000)
-                time.sleep(5)
-            else:
-                page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=60000)
-                time.sleep(5)
+            # Always use compose/post (tweet detail pages don't render on VDS)
+            page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=60000)
+            time.sleep(5)
 
             # Dismiss overlays
             try:
