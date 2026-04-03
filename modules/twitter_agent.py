@@ -462,29 +462,56 @@ def _is_reply_worthy(tweet_text: str) -> bool:
     """STRICT: Only reply to tweets about Windows problems or PC optimization."""
     lower = tweet_text.lower()
 
-    # The tweet MUST be about windows/PC problems. Nothing else.
-    windows_signals = [
+    # TIER 1: Direct tool requests — ALWAYS reply (highest value)
+    tool_requests = [
+        "best debloat", "debloat tool", "debloating tool", "recommend debloat",
+        "best optimizer", "optimization tool", "best tool for windows",
+        "what tool", "any tool", "good tool for",
+        "how to debloat", "how to optimize windows", "how to clean windows",
+        "how to remove bloat", "how to speed up windows", "how to make windows faster",
+        "need help with windows", "help me debloat", "help optimize",
+    ]
+    if any(t in lower for t in tool_requests):
+        return True
+
+    # TIER 2: Windows problems — reply with helpful tip
+    windows_problems = [
         "windows slow", "windows is slow", "pc is slow", "laptop is slow",
+        "computer is slow", "pc running slow", "laptop running slow",
+        "windows freezing", "windows lagging", "windows hanging",
+        "high cpu", "high memory", "high ram", "100% cpu", "100% disk",
+        "too many processes", "background processes", "too many services",
+        "task manager", "services tab", "startup programs",
+        "windows update broke", "update ruined", "forced update", "update restart",
+        "fresh install slow", "clean install still slow",
+        "windows 11 slow", "windows 10 slow",
+        "boot time", "slow boot", "takes forever to boot",
+        "windows using too much", "eating my ram", "eating my cpu",
+        "why is svchost", "why is antimalware", "why is system using",
+    ]
+    if any(p in lower for p in windows_problems):
+        return True
+
+    # TIER 3: Windows discussions — reply if substantive
+    windows_discussions = [
         "debloat", "bloatware", "remove bloat", "clean windows",
         "optimize windows", "windows optimization", "pc optimization",
-        "best debloat", "debloat tool", "debloating tool",
         "telemetry", "windows telemetry", "windows privacy", "windows spying",
-        "task manager", "high cpu", "high memory", "high ram",
-        "windows services", "disable services", "services tab",
-        "windows update", "forced update", "update broke",
-        "fresh install", "clean install", "windows bloat",
-        "why is windows", "windows is trash", "windows sucks",
-        "windows 11 slow", "windows 10 slow",
-        "game bar", "xbox game bar",
-        "startup programs", "boot time", "windows boot",
+        "windows services", "disable services",
+        "windows bloat", "why is windows",
+        "windows is trash", "windows sucks", "hate windows",
+        "game bar", "xbox game bar", "game bar recording",
         "remove cortana", "remove edge", "remove onedrive",
         "registry", "regedit", "group policy",
-        "how to speed up", "make pc faster", "make windows faster",
-        "too many processes", "background processes",
+        "make pc faster", "make windows faster", "speed up pc",
+        "timer resolution", "ndu.sys", "superfetch", "sysmain",
+        "windows preinstalled", "candy crush", "preinstalled apps",
     ]
-
-    if not any(s in lower for s in windows_signals):
-        return False
+    if any(d in lower for d in windows_discussions):
+        # Extra check: must look like a real person's tweet, not a brand
+        personal = ["i ", "my ", "?", "just ", "why ", "how ", "anyone", "hate", "love", "finally"]
+        if any(p in lower for p in personal):
+            return True
 
     # Reject brands/bots even if they mention windows
     reject = [
@@ -497,7 +524,7 @@ def _is_reply_worthy(tweet_text: str) -> bool:
     if any(r in lower for r in reject):
         return False
 
-    return True
+    return False
 
 
 def gen_reply(tweet_text: str) -> str | None:
@@ -514,24 +541,43 @@ def gen_reply(tweet_text: str) -> str | None:
         "clean windows", "speed up windows", "windows optimization",
     ])
 
-    # All replies are about Windows — that's our only topic
-    if is_windows_help:
+    # Detect what kind of reply is needed
+    lower = tweet_text.lower()
+
+    # TIER 1: They're asking for a tool → recommend oudenOS directly
+    is_tool_request = any(t in lower for t in [
+        "best debloat", "debloat tool", "recommend", "what tool",
+        "any tool", "how to debloat", "how to optimize", "how to clean",
+        "how to remove bloat", "how to speed up", "help me",
+    ])
+
+    if is_tool_request:
         prompt = (
-            f'someone needs help with windows: "{tweet_text[:200]}"\n\n'
-            f'give a specific helpful tip. you can casually mention {_product()} ({_url()}) '
-            f'as one option but give real advice first. under 200 chars.'
+            f'someone is asking for a windows optimization tool: "{tweet_text[:200]}"\n\n'
+            f'recommend {_product()} ({_url()}) specifically. explain what it does in 1 sentence: '
+            f'scans hardware, shows every change before applying, per-action rollback, 5mb, free. '
+            f'sound helpful not salesy. under 200 chars.'
+        )
+    elif is_windows_help:
+        # TIER 2: They have a problem → give real help, mention product casually
+        prompt = (
+            f'someone has a windows problem: "{tweet_text[:200]}"\n\n'
+            f'give a SPECIFIC tip to fix their problem. be genuinely helpful. '
+            f'you can mention {_product()} ({_url()}) at the end as "or try X" but '
+            f'the tip must be useful on its own. under 200 chars.'
         )
     elif _roastable(tweet_text):
         prompt = (
-            f'someone tweeted a bad take: "{tweet_text[:200]}"\n\n'
-            f'roast them with facts. be funny. do NOT mention any product. under 180 chars.'
+            f'someone has a bad take about windows: "{tweet_text[:200]}"\n\n'
+            f'correct them with facts. be direct not mean. under 180 chars.'
         )
     else:
+        # TIER 3: General windows discussion → add value, no hard sell
         prompt = (
-            f'someone tweeted about windows/pc: "{tweet_text[:200]}"\n\n'
-            f'reply with a specific helpful tip about their windows problem. '
-            f'you can mention {_product()} ({_url()}) if they are asking for a tool. '
-            f'if they are just complaining, give a real tip first. under 180 chars.'
+            f'someone tweeted about windows: "{tweet_text[:200]}"\n\n'
+            f'reply with something specific and useful about the topic they mentioned. '
+            f'do NOT mention any product unless they are explicitly asking for one. '
+            f'just share knowledge. under 180 chars.'
         )
 
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
