@@ -25,9 +25,26 @@ def load_cookies() -> dict:
 
 def post_with_playwright(cookies: dict, text: str, reply_to_url: str | None = None) -> bool:
     """Open browser, post tweet/reply, close browser. Minimizes memory usage."""
+    import subprocess
     from playwright.sync_api import sync_playwright
 
     ct0, auth_token = cookies["ct0"], cookies["auth_token"]
+
+    # Free RAM: stop heavy PM2 services temporarily
+    subprocess.run(["pm2", "stop", "redcore-web", "cloud-api"], capture_output=True, timeout=10)
+    time.sleep(2)
+
+    try:
+        result = _do_playwright_post(ct0, auth_token, text, reply_to_url)
+    finally:
+        # Restart services
+        subprocess.run(["pm2", "start", "redcore-web", "cloud-api"], capture_output=True, timeout=10)
+
+    return result
+
+
+def _do_playwright_post(ct0: str, auth_token: str, text: str, reply_to_url: str | None = None) -> bool:
+    from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
