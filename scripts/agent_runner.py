@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """CashCrab Twitter Agent - 24/7 VDS runner.
 
-Runs as PM2 process. Playwright browser loops forever.
-All product-specific config comes from config.json.
-
-Usage:
-    pm2 start scripts/agent_runner.py --name twitter-agent --interpreter .venv/bin/python3
+PM2 compatible. Never crashes - catches all errors internally.
 """
 from __future__ import annotations
 
@@ -19,8 +15,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from playwright.sync_api import sync_playwright
-
 COOKIES_PATH = Path(__file__).resolve().parent.parent / "tokens" / "twitter_cookies.json"
 
 
@@ -28,44 +22,70 @@ def load_cookies() -> dict:
     return json.loads(COOKIES_PATH.read_text())
 
 
+def create_browser(pw, cookies):
+    """Create a fresh browser + page. Returns (browser, page)."""
+    ct0, auth_token = cookies["ct0"], cookies["auth_token"]
+
+    browser = pw.chromium.launch(
+        headless=True,
+        args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
+              "--disable-gpu", "--single-process"],
+    )
+    ctx = browser.new_context(
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        viewport={"width": 1280, "height": 720},
+    )
+    ctx.add_cookies([
+        {"name": "ct0", "value": ct0, "domain": ".x.com", "path": "/"},
+        {"name": "auth_token", "value": auth_token, "domain": ".x.com", "path": "/"},
+    ])
+    page = ctx.new_page()
+
+    # Navigate with generous timeout
+    page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=60000)
+    time.sleep(5)
+
+    # Dismiss any overlays/popups
+    try:
+        # Cookie consent or other overlays
+        for selector in ['[data-testid="sheetDialog"] [role="button"]', '[aria-label="Close"]']:
+            btn = page.locator(selector).first
+            if btn.count() > 0 and btn.is_visible():
+                btn.click()
+                time.sleep(1)
+    except Exception:
+        pass
+
+    return browser, page
+
+
 def main():
+    from playwright.sync_api import sync_playwright
+
     print(f"[{datetime.now().isoformat()}] CashCrab Twitter Agent starting...")
-    print(f"  24/7 mode. Rate limits enforced internally.")
-
     cookies = load_cookies()
-    ct0 = cookies["ct0"]
-    auth_token = cookies["auth_token"]
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-        )
-        ctx = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            viewport={"width": 1920, "height": 1080},
-        )
-        ctx.add_cookies([
-            {"name": "ct0", "value": ct0, "domain": ".x.com", "path": "/"},
-            {"name": "auth_token", "value": auth_token, "domain": ".x.com", "path": "/"},
-        ])
-        page = ctx.new_page()
+    with sync_playwright() as pw:
+        browser = None
+        page = None
 
-        page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=30000)
-        time.sleep(3)
-        title = page.title()
-        print(f"  Page title: {title}")
-        if "Login" in title or "Log in" in title:
-            print("  ERROR: Not logged in. Check cookies.")
-            browser.close()
-            sys.exit(1)
+        # Initial browser setup
+        try:
+            browser, page = create_browser(pw, cookies)
+            title = page.title()
+            print(f"  Page: {title}")
+            if "Login" in title or "Log in" in title:
+                print("  ERROR: cookies expired.")
+                return
+            print(f"  Logged in. Running 24/7.\n")
+        except Exception as exc:
+            print(f"  Browser init failed: {exc}")
+            return
 
-        print(f"  Logged in. Agent loop starting.\n")
-
-        from modules.twitter_agent import run_cycle
+        from modules.twitter_agent import run_cycle, cycle_sleep_minutes
 
         cycle = 0
-        consecutive_errors = 0
+        fails = 0
 
         while True:
             cycle += 1
@@ -73,41 +93,37 @@ def main():
 
             try:
                 stats = run_cycle(page)
-                print(f"  Results: {stats}")
-                consecutive_errors = 0
+                print(f"  Stats: {stats}")
+                fails = 0
             except Exception as exc:
-                consecutive_errors += 1
-                print(f"  Cycle error: {exc}")
-                traceback.print_exc()
+                fails += 1
+                print(f"  Cycle {cycle} error: {exc}")
 
-                if consecutive_errors >= 5:
-                    print("  Too many errors, restarting browser...")
+                # Restart browser after 3 consecutive fails
+                if fails >= 3:
+                    print("  Restarting browser...")
                     try:
                         browser.close()
                     except Exception:
                         pass
-                    time.sleep(10)
-                    browser = p.chromium.launch(
-                        headless=True,
-                        args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-                    )
-                    ctx = browser.new_context(
-                        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                        viewport={"width": 1920, "height": 1080},
-                    )
-                    ctx.add_cookies([
-                        {"name": "ct0", "value": ct0, "domain": ".x.com", "path": "/"},
-                        {"name": "auth_token", "value": auth_token, "domain": ".x.com", "path": "/"},
-                    ])
-                    page = ctx.new_page()
-                    page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=30000)
-                    time.sleep(3)
-                    consecutive_errors = 0
-                    print("  Browser restarted.")
+                    time.sleep(15)
+                    try:
+                        browser, page = create_browser(pw, cookies)
+                        print("  Browser restarted OK")
+                        fails = 0
+                    except Exception as exc2:
+                        print(f"  Browser restart failed: {exc2}")
+                        print("  Waiting 5 min before retry...")
+                        time.sleep(300)
+                        try:
+                            browser, page = create_browser(pw, cookies)
+                            fails = 0
+                        except Exception:
+                            print("  FATAL: Cannot start browser. Exiting.")
+                            return
 
-            from modules.twitter_agent import cycle_sleep_minutes
             sleep_min = cycle_sleep_minutes()
-            print(f"  Next cycle in {sleep_min} min...\n")
+            print(f"  Next cycle in {sleep_min}m\n")
             time.sleep(sleep_min * 60)
 
 

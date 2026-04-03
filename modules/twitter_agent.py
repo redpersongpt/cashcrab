@@ -399,9 +399,34 @@ def check_cookie_health(page) -> bool:
 
 # ─── Playwright UI actions ────────────────────────────────────────
 
+def _dismiss_overlays(page):
+    """Dismiss any popups, cookie banners, or overlays blocking interaction."""
+    try:
+        for selector in [
+            '[data-testid="twc-cc-mask"]',
+            '[data-testid="sheetDialog"] [role="button"]',
+            '[aria-label="Close"]',
+            '[data-testid="app-bar-close"]',
+            'div[role="dialog"] button',
+        ]:
+            el = page.locator(selector).first
+            if el.count() > 0 and el.is_visible():
+                el.click(timeout=3000)
+                time.sleep(0.5)
+    except Exception:
+        pass
+    # Also try pressing Escape
+    try:
+        page.keyboard.press("Escape")
+        time.sleep(0.3)
+    except Exception:
+        pass
+
+
 def _post(page, text: str):
     page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=60000)
     time.sleep(3)
+    _dismiss_overlays(page)
     c = page.locator('[data-testid="tweetTextarea_0"]').first
     c.click()
     time.sleep(0.5)
@@ -435,8 +460,10 @@ def _post_with_image(page, text: str, image_path: str):
 
 
 def _reply(page, article, text: str):
+    _dismiss_overlays(page)
     article.locator('[data-testid="reply"]').first.click()
     time.sleep(2)
+    _dismiss_overlays(page)
     c = page.locator('[data-testid="tweetTextarea_0"]').first
     c.click()
     time.sleep(0.3)
@@ -446,7 +473,8 @@ def _reply(page, article, text: str):
     time.sleep(3)
 
 
-def _like(article):
+def _like(page, article):
+    _dismiss_overlays(page)
     btn = article.locator('[data-testid="like"]').first
     if btn.count() > 0:
         btn.click()
@@ -454,6 +482,7 @@ def _like(article):
 
 
 def _quote(page, article, comment: str) -> bool:
+    _dismiss_overlays(page)
     rt = article.locator('[data-testid="retweet"]').first
     if rt.count() == 0: return False
     rt.click()
@@ -607,6 +636,7 @@ def _do_engage(page, log) -> int:
     print(f"  [engage] {q}")
     page.goto(f"https://x.com/search?q={q}&src=typed_query&f=live", wait_until="domcontentloaded", timeout=60000)
     time.sleep(4)
+    _dismiss_overlays(page)
     articles = page.locator('article[data-testid="tweet"]')
     count = articles.count()
     if count < 2: return 0
@@ -620,7 +650,7 @@ def _do_engage(page, log) -> int:
         if not _relevant(text): continue
         if can_like(log):
             try:
-                _like(art)
+                _like(page, art)
                 log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "q": q})
                 track_action("like")
             except Exception: pass
@@ -679,7 +709,7 @@ def _do_browse(page, log) -> int:
         text = tel.inner_text().lower()
         if any(kw in text for kw in kws):
             try:
-                _like(art)
+                _like(page, art)
                 log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "src": "tl"})
                 liked += 1
                 track_action("like")
