@@ -6,9 +6,25 @@ Uses cookie auth + Chrome TLS fingerprint via curl_cffi.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 from curl_cffi.requests import Session
+
+
+def _atomic_write(path: Path, content: str):
+    try:
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        path.write_text(content)
 
 from modules.config import ROOT
 
@@ -107,7 +123,7 @@ class HttpTwitter:
         if len(keys) > 300:
             self._engaged_ids = {k: True for k in keys[-300:]}
         try:
-            ENGAGED_PATH.write_text(json.dumps(list(self._engaged_ids.keys())))
+            _atomic_write(ENGAGED_PATH, json.dumps(list(self._engaged_ids.keys())))
         except Exception:
             pass
 
@@ -471,7 +487,7 @@ class HttpTwitter:
                             "likes": leg.get("favorite_count", 0),
                             "retweets": leg.get("retweet_count", 0),
                             "replies": leg.get("reply_count", 0),
-                            "views": result.get("views", {}).get("count", "0"),
+                            "views": int(result.get("views", {}).get("count", "0") or 0),
                         }
             return {}
         except Exception:

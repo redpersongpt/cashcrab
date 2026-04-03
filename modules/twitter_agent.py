@@ -22,8 +22,27 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import os
+import tempfile
+
 from modules.config import ROOT, optional_section
 from modules import llm
+
+
+def _atomic_write(path: Path, content: str):
+    """Write file atomically — write to temp, then rename."""
+    try:
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        # Fallback to non-atomic
+        path.write_text(content)
 
 AGENT_LOG = ROOT / "agent_log.json"
 VOICE_PATH = ROOT / "voice_profile.json"
@@ -99,7 +118,7 @@ def _save_log(log: dict):
     for key in list(log.keys()):
         if isinstance(log[key], list):
             log[key] = [e for e in log[key] if e.get("date", "") >= cutoff]
-    AGENT_LOG.write_text(json.dumps(log, indent=2))
+    _atomic_write(AGENT_LOG, json.dumps(log, indent=2))
 
 
 def _today(log, key):
@@ -192,7 +211,7 @@ def _check_quality(text: str) -> tuple[bool, bool]:
         for p in parts:
             digits = "".join(c for c in p if c.isdigit())
             if digits:
-                score = int(digits[:2])
+                score = min(int(digits[:2]), 10)  # cap at 10
                 break
         return safe, score >= 5
     except Exception as exc:
@@ -295,7 +314,7 @@ def _save_replied_users(data: dict):
     cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
     cleaned = {k: v for k, v in data.items() if v.get("date", "") >= cutoff}
     try:
-        REPLIED_USERS_PATH.write_text(json.dumps(cleaned, indent=2))
+        _atomic_write(REPLIED_USERS_PATH, json.dumps(cleaned, indent=2))
     except Exception:
         pass
 
@@ -374,7 +393,7 @@ def _load_performance() -> dict:
 
 def _save_performance(data: dict):
     try:
-        PERFORMANCE_PATH.write_text(json.dumps(data, indent=2))
+        _atomic_write(PERFORMANCE_PATH, json.dumps(data, indent=2))
     except Exception:
         pass
 
@@ -457,22 +476,30 @@ def continue_conversations(api, log: dict) -> int:
     """Check if anyone replied to our replies, continue the conversation."""
     replied_count = 0
 
+    # Get our own username to avoid self-replies
+    try:
+        me = api.get_me()
+        my_username = me.get("username", "").lower()
+    except Exception:
+        my_username = ""
+
     for reply_entry in log.get("replies", [])[-10:]:
         rid = reply_entry.get("id", "")
         if not rid:
             continue
 
-        # Already checked this conversation
         if api.already_engaged(f"conv_{rid}"):
             continue
 
-        # Get replies to our reply
         try:
             thread_replies = api.get_tweet_replies(rid)
         except Exception:
             continue
 
         for tr in thread_replies[:3]:
+            # CRITICAL: never reply to ourselves
+            if tr.get("user", "").lower() == my_username:
+                continue
             if _spam(tr["text"]):
                 continue
             if api.already_engaged(tr["id"]):
@@ -524,7 +551,7 @@ def _check_release() -> dict | None:
             d = r.json()
             rel = {"tag": d.get("tag_name", ""), "name": d.get("name", ""),
                    "body": d.get("body", ""), "_at": datetime.now().isoformat()}
-            RELEASE_CACHE.write_text(json.dumps(rel, indent=2))
+            _atomic_write(RELEASE_CACHE, json.dumps(rel, indent=2))
             return rel
     except Exception:
         pass
@@ -841,7 +868,7 @@ def _load_analytics() -> dict:
 
 
 def _save_analytics(data: dict):
-    ANALYTICS_PATH.write_text(json.dumps(data, indent=2))
+    _atomic_write(ANALYTICS_PATH, json.dumps(data, indent=2))
 
 
 def track_action(action_type: str, detail: str = ""):
