@@ -56,6 +56,8 @@ class HttpTwitter:
         self._session = Session(impersonate="chrome120")
         self._session.cookies.set("ct0", self._ct0, domain=".x.com")
         self._session.cookies.set("auth_token", self._at, domain=".x.com")
+        self._daily_limit_hit = False
+        self._engaged_ids: set[str] = set()  # dedup
 
     def _headers(self) -> dict:
         return {
@@ -67,6 +69,31 @@ class HttpTwitter:
             "referer": "https://x.com/",
             "origin": "https://x.com",
         }
+
+    def _refresh_ct0(self, response):
+        """Auto-refresh ct0 from response cookies."""
+        for cookie in getattr(response, 'cookies', {}).items() if hasattr(response, 'cookies') else []:
+            if cookie[0] == 'ct0':
+                self._ct0 = cookie[1]
+                self._session.cookies.set("ct0", self._ct0, domain=".x.com")
+                # Save to file
+                cookies = json.loads(COOKIES_PATH.read_text())
+                cookies["ct0"] = self._ct0
+                COOKIES_PATH.write_text(json.dumps(cookies, indent=2))
+                break
+
+    def already_engaged(self, tweet_id: str) -> bool:
+        return tweet_id in self._engaged_ids
+
+    def mark_engaged(self, tweet_id: str):
+        self._engaged_ids.add(tweet_id)
+        # Keep set manageable
+        if len(self._engaged_ids) > 500:
+            self._engaged_ids = set(list(self._engaged_ids)[-200:])
+
+    @property
+    def can_post(self) -> bool:
+        return not self._daily_limit_hit
 
     def get_me(self) -> dict:
         r = self._session.get(
@@ -103,15 +130,24 @@ class HttpTwitter:
         return self._parse_timeline(r.json(), ["data", "home", "home_timeline_urt", "instructions"])
 
     def like(self, tweet_id: str) -> bool:
+        if self.already_engaged(tweet_id):
+            return False
         r = self._session.post(
             f"https://x.com/i/api/graphql/{QID['FavoriteTweet']}/FavoriteTweet",
             json={"variables": {"tweet_id": tweet_id}, "queryId": QID["FavoriteTweet"]},
             headers=self._headers(),
         )
-        return r.status_code == 200 and "Done" in r.text
+        self._refresh_ct0(r)
+        if r.status_code == 200 and "Done" in r.text:
+            self.mark_engaged(tweet_id)
+            return True
+        return False
 
     def create_tweet(self, text: str, reply_to: str | None = None) -> str | None:
         """Post a tweet or reply. Returns tweet ID or None."""
+        if self._daily_limit_hit:
+            return None
+
         variables = {
             "tweet_text": text,
             "dark_request": False,
@@ -129,21 +165,46 @@ class HttpTwitter:
             json={"variables": variables, "features": FEATURES, "queryId": QID["CreateTweet"]},
             headers=self._headers(),
         )
+        self._refresh_ct0(r)
+
         if r.status_code != 200:
             return None
 
         data = r.json()
         if "errors" in data:
             err = data["errors"][0].get("message", "")
+            code = data["errors"][0].get("code", 0)
+            if code == 344 or "daily limit" in err.lower():
+                self._daily_limit_hit = True
+                print("  [LIMIT] Daily tweet limit reached. Switching to like-only mode.")
+                return None
             raise RuntimeError(f"CreateTweet: {err[:150]}")
 
-        return (
+        tweet_id = (
             data.get("data", {})
             .get("create_tweet", {})
             .get("tweet_results", {})
             .get("result", {})
             .get("rest_id", "")
-        ) or None
+        )
+        if tweet_id:
+            self.mark_engaged(tweet_id)
+        return tweet_id or None
+
+    def retweet(self, tweet_id: str) -> bool:
+        """Retweet a tweet."""
+        if self._daily_limit_hit or self.already_engaged(tweet_id):
+            return False
+        r = self._session.post(
+            "https://x.com/i/api/graphql/ojPdsZsimiJrUGLR1sjUtA/CreateRetweet",
+            json={"variables": {"tweet_id": tweet_id, "dark_request": False}, "queryId": "ojPdsZsimiJrUGLR1sjUtA"},
+            headers=self._headers(),
+        )
+        self._refresh_ct0(r)
+        if r.status_code == 200 and "errors" not in r.json():
+            self.mark_engaged(tweet_id)
+            return True
+        return False
 
     def notifications(self) -> list[dict]:
         r = self._session.get(

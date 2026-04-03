@@ -1017,17 +1017,28 @@ def _do_follow(page, log) -> int:
 
 # ─── Pure HTTP cycle (no Playwright) ──────────────────────────────
 
+def _recent_tweet_texts(log: dict, days: int = 1) -> set[str]:
+    """Get recent tweet texts to avoid repetition."""
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    texts = set()
+    for t in log.get("tweets", []):
+        if t.get("date", "") >= cutoff:
+            texts.add(t.get("text", "")[:50].lower())
+    return texts
+
+
 def run_cycle_http() -> dict:
     """Full cycle using only HTTP API (curl_cffi). No browser needed."""
     from modules.http_twitter import HttpTwitter
 
     log = _load_log()
-    stats = {"tweets": 0, "replies": 0, "likes": 0}
+    stats = {"tweets": 0, "replies": 0, "likes": 0, "retweets": 0}
     api = HttpTwitter()
+    recent_texts = _recent_tweet_texts(log)
 
     # Release check
     new_rel = _new_release(log)
-    if new_rel and can_tweet(log):
+    if new_rel and can_tweet(log) and api.can_post:
         text = gen_tweet(release_tag=new_rel)
         if text:
             try:
@@ -1042,56 +1053,69 @@ def run_cycle_http() -> dict:
                 print(f"  [release] error: {exc}")
             time.sleep(random.uniform(5, 15))
 
-    # Activities
+    # Activities — more variety, limit-aware
     if is_peak_hour():
-        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like"]
+        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet"]
     elif is_dead_hour():
-        activities = ["like"]
+        activities = ["like", "like"]
     else:
-        activities = ["tweet", "like", "like", "reply", "reply"]
+        activities = ["tweet", "like", "like", "reply", "reply", "like"]
+
+    # If daily limit hit, only do likes
+    if not api.can_post:
+        activities = ["like", "like", "like"]
 
     random.shuffle(activities)
 
     for activity in activities:
         try:
-            if activity == "tweet" and can_tweet(log):
+            if activity == "tweet" and can_tweet(log) and api.can_post:
                 text = gen_tweet()
                 if text:
+                    # Dedup — don't repeat same topic
+                    if text[:50].lower() in recent_texts:
+                        print(f"  [tweet] SKIP duplicate topic")
+                        continue
                     print(f"  [tweet] {text[:60]}...")
                     tid = api.create_tweet(text)
                     if tid:
                         log.setdefault("tweets", []).append({"date": datetime.now().isoformat(), "text": text[:200], "id": tid})
                         stats["tweets"] += 1
                         track_action("tweet")
+                        recent_texts.add(text[:50].lower())
                         print(f"  [tweet] POSTED {tid}")
 
             elif activity == "like" and can_like(log):
                 tweets = api.home_timeline(30)
-                kws = _keywords()
                 for t in tweets:
                     if not can_like(log):
                         break
-                    if any(kw in t["text"].lower() for kw in kws):
-                        try:
-                            if api.like(t["id"]):
-                                log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "tid": t["id"]})
-                                stats["likes"] += 1
-                                track_action("like")
-                                print(f"  [like] @{t['user']}: {t['text'][:50]}...")
-                        except Exception:
-                            pass
-                        time.sleep(random.uniform(2, 6))
+                    if api.already_engaged(t["id"]):
+                        continue
+                    if not _relevant(t["text"]):
+                        continue
+                    try:
+                        if api.like(t["id"]):
+                            log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "tid": t["id"], "user": t.get("user", "")})
+                            stats["likes"] += 1
+                            track_action("like")
+                            print(f"  [like] @{t['user']}: {t['text'][:50]}...")
+                    except Exception:
+                        pass
+                    time.sleep(random.uniform(2, 6))
 
-            elif activity == "reply" and can_reply(log):
+            elif activity == "reply" and can_reply(log) and api.can_post:
                 tweets = api.home_timeline(30)
                 for t in tweets:
-                    if not can_reply(log):
+                    if not can_reply(log) or not api.can_post:
                         break
-                    if not _relevant(t["text"]) or _spam(t["text"]):
+                    if api.already_engaged(t["id"]):
+                        continue
+                    if not _is_reply_worthy(t["text"]):
                         continue
                     if not t.get("user") or not t.get("id"):
                         continue
-                    if random.random() > 0.50:
+                    if random.random() > 0.40:
                         continue
 
                     reply = gen_reply(t["text"])
@@ -1103,11 +1127,31 @@ def run_cycle_http() -> dict:
                                 log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": t["text"][:100], "r": reply[:200], "user": t["user"], "id": rid})
                                 stats["replies"] += 1
                                 track_action("reply")
+                                api.mark_engaged(t["id"])
                                 print(f"  [reply] POSTED {rid}")
                         except Exception as exc:
                             print(f"  [reply] error: {exc}")
                         time.sleep(random.uniform(10, 25))
-                        break
+                        break  # max 1 reply per sub-activity
+
+            elif activity == "retweet" and api.can_post:
+                tweets = api.home_timeline(20)
+                for t in tweets:
+                    if api.already_engaged(t["id"]):
+                        continue
+                    # Only RT high-engagement dev tweets
+                    if not _relevant(t["text"]):
+                        continue
+                    if t.get("likes", 0) < 10:
+                        continue
+                    try:
+                        if api.retweet(t["id"]):
+                            stats["retweets"] += 1
+                            track_action("retweet")
+                            print(f"  [rt] @{t['user']}: {t['text'][:50]}...")
+                    except Exception:
+                        pass
+                    break  # max 1 RT per cycle
 
         except Exception as exc:
             print(f"  [{activity}] error: {exc}")
