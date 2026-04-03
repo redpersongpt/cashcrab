@@ -1,4 +1,5 @@
 import json
+import random
 import shlex
 import shutil
 import subprocess
@@ -6,7 +7,7 @@ import time
 
 from g4f.client import Client as G4FClient
 
-from modules.config import ROOT, section
+from modules.config import ROOT, section, optional_section
 
 _client_cache = None
 
@@ -123,8 +124,58 @@ def _generate_with_qwen(prompt: str, system: str, model: str, max_retries: int) 
     return ""
 
 
+def _generate_with_gemini(prompt: str, system: str, max_retries: int) -> str:
+    """Generate text using Gemini CLI as subprocess."""
+    gemini_bin = shutil.which("gemini")
+    if not gemini_bin:
+        raise RuntimeError("Gemini CLI not found. Install with: npm install -g @google/gemini-cli")
+
+    full_prompt = f"{system}\n\n{prompt}"
+
+    for attempt in range(max_retries):
+        try:
+            result = subprocess.run(
+                [gemini_bin, "-p", "respond with only the requested text. no markdown formatting. no backticks. no explanations."],
+                input=full_prompt,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            output = (result.stdout or "").strip()
+            # Strip gemini CLI noise
+            lines = [l for l in output.split("\n") if not l.startswith("Keychain") and not l.startswith("Using FileKeychain") and not l.startswith("Loaded cached")]
+            clean = "\n".join(lines).strip()
+            if clean:
+                return clean
+            if result.returncode != 0:
+                raise RuntimeError((result.stderr or "").strip() or "Gemini returned non-zero")
+        except Exception as exc:
+            if attempt == max_retries - 1:
+                raise RuntimeError(f"Gemini generation failed: {exc}") from exc
+            time.sleep(2 ** attempt)
+
+    return ""
+
+
+def _gemini_available() -> bool:
+    return shutil.which("gemini") is not None
+
+
 def generate(prompt: str, system: str = "You are a helpful assistant.", max_retries: int = 3) -> str:
     client, model, kind = _client()
+
+    # Dual-LLM mode: randomly pick Gemini or Qwen for variety
+    gemini_cfg = optional_section("gemini", {})
+    use_gemini = gemini_cfg.get("enabled", False) and _gemini_available()
+
+    if use_gemini and kind == "qwen_code":
+        # 40% gemini, 60% qwen — gemini for variety, qwen as workhorse
+        if random.random() < 0.4:
+            try:
+                return _generate_with_gemini(prompt, system, max_retries)
+            except Exception:
+                pass  # fallback to qwen
 
     if kind == "qwen_code":
         return _generate_with_qwen(prompt, system, model, max_retries)
