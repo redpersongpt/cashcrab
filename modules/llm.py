@@ -229,7 +229,8 @@ def generate(prompt: str, system: str = "You are a helpful assistant.", max_retr
                 model=model,
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             )
-            return resp.choices[0].message.content.strip()
+            content = resp.choices[0].message.content or ""
+            return content.strip()
         except Exception as exc:
             if attempt == max_retries - 1:
                 raise

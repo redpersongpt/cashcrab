@@ -1197,17 +1197,27 @@ def run_cycle_http() -> dict:
                     break
 
             elif activity == "follow":
-                tweets = timeline
                 followed = 0
-                for t in tweets:
+                for t in timeline:
                     if followed >= 2:
                         break
                     if not _relevant(t["text"]):
                         continue
+                    if not t.get("user_id"):
+                        continue
                     if t.get("followers", 0) < 100 or t.get("followers", 0) > 100000:
-                        continue  # sweet spot: 100-100k followers
-                    # Need user_id — extract from timeline data
-                    # For now skip if no user_id available
+                        continue
+                    if api.already_engaged(f"follow_{t['user_id']}"):
+                        continue
+                    if api.is_blacklisted(t.get("user", "")):
+                        continue
+                    try:
+                        if api.follow(t["user_id"]):
+                            followed += 1
+                            track_action("follow")
+                            print(f"  [follow] @{t['user']} ({t.get('followers', 0)} followers)")
+                    except Exception:
+                        pass
                     time.sleep(random.uniform(3, 8))
 
             elif activity == "reply_mentions" and api.can_post:
