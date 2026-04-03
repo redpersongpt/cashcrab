@@ -324,7 +324,7 @@ CONTENT_CALENDAR = {
     3: "windows",    # Thursday: windows facts
     4: "ai",         # Friday: AI takes
     5: "dev",        # Saturday: dev culture
-    6: "product",    # Sunday: oudenOS showcase
+    6: "product",    # Sunday: product showcase
 }
 
 
@@ -362,7 +362,7 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
             "windows": ["windows", "service", "telemetry", "game bar", "timer", "ndu", "bloat", "mapsbroker", "fax", "candy"],
             "ai": ["copilot", "AI", "vibe coding", "gatekeeping", "junior dev", "stackoverflow"],
             "dev": ["rust", "typescript", "docker", "kubernetes", "monolith", "startup", "side project", "programming language"],
-            "product": ["oudenOS", "ouden", "scans hardware", "rollback", "5mb"],
+            "product": [_product().lower(), "scans hardware", "rollback", "optimizer"],
         }
         kws = type_keywords.get(content_type, [])
         # Prefer topics matching today's content type
@@ -489,12 +489,12 @@ def gen_reply(tweet_text: str) -> str | None:
             f'if someone builds with AI: support them, ask about the project. '
             f'if someone gatekeeps coding: call it out, AI makes coding accessible. '
             f'be specific to their point. be funny. '
-            f'do NOT mention oudenOS. under 180 chars.'
+            f'do NOT mention {_product()} or any product. under 180 chars.'
         )
     elif is_windows_help:
         prompt = (
             f'someone needs help with windows: "{tweet_text[:200]}"\n\n'
-            f'give a specific helpful tip. you can casually mention oudenOS (ouden.cc) '
+            f'give a specific helpful tip. you can casually mention {_product()} ({_url()}) '
             f'as one option but give real advice first. under 200 chars.'
         )
     elif _roastable(tweet_text):
@@ -506,7 +506,7 @@ def gen_reply(tweet_text: str) -> str | None:
         prompt = (
             f'someone tweeted: "{tweet_text[:200]}"\n\n'
             f'reply to what THEY said. be specific to their point. '
-            f'do NOT mention oudenOS or any product. just be a helpful dev. under 180 chars.'
+            f'do NOT mention any product. just be a helpful dev. under 180 chars.'
         )
 
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
@@ -518,17 +518,19 @@ def gen_reply(tweet_text: str) -> str | None:
     spam_patterns = [
         "kills 220", "kills 280", "blocks 70", "280 services",
         "220 services", "70 telemetry", "70 endpoints",
-        "github.com/redpersongpt", "oudenOS kills", "oudenOS blocks",
-        "oudenOS does this", "oudenOS fixes", "oudenOS can",
-        "check out oudenOS", "try oudenOS",
+        "github.com/", f"{_product()} kills", f"{_product()} blocks",
+        f"{_product()} does this", f"{_product()} fixes", f"{_product()} can",
+        f"check out {_product()}", f"try {_product()}",
         "here's why", "did you know", "introducing",
         "as a developer", "in my experience",
     ]
     if any(p.lower() in text_lower for p in spam_patterns):
         return None
 
-    # If oudenOS/ouden.cc mentioned but tweet wasn't about windows help → reject
-    if not is_windows_help and ("oudenos" in text_lower or "ouden.cc" in text_lower):
+    # If product mentioned but tweet wasn't about windows help → reject
+    product_lower = _product().lower()
+    url_lower = _url().lower()
+    if not is_windows_help and (product_lower in text_lower or url_lower in text_lower):
         return None
 
     # Reject if reply is too generic / template
