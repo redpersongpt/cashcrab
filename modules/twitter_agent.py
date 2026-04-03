@@ -220,16 +220,33 @@ def _spam(text: str) -> bool:
 
 
 def _relevant(text: str) -> bool:
-    """Check if tweet is about dev/tech topics we care about."""
+    """Check if tweet is about dev/tech topics we care about. For likes."""
     if len(text) < 20 or _spam(text):
         return False
     lower = text.lower()
-    # Reject non-tech topics even if they contain a keyword
-    reject = ["crypto", "nft", "giveaway", "follow me", "dm me", "pray", "god",
-              "sports", "football", "basketball", "celebrity", "birthday"]
+    # Reject non-tech
+    reject = [
+        "crypto", "nft", "giveaway", "follow me", "dm me", "pray", "god",
+        "sports", "football", "basketball", "celebrity", "birthday",
+        "twitter is cool", "follow back", "release notes", "changelog",
+        "google play", "app store", "hiring", "join us",
+        "service center", "overseas", "artemis", "nasa",
+        "connectors", "available on every", "create videos",
+        "automate your", "boost your", "try our",
+    ]
     if any(r in lower for r in reject):
         return False
-    return any(kw in lower for kw in _keywords())
+    # Must have PERSONAL dev/tech content
+    good = [
+        "code", "coding", "programming", "developer",
+        "javascript", "typescript", "python", "rust", "react",
+        "windows", "linux", "pc", "laptop", "setup",
+        "cpu", "gpu", "ram", "performance", "optimize",
+        "vscode", "terminal", "git", "docker",
+        "framework", "open source", "built", "made", "learned",
+        "hot take", "unpopular opinion", "be honest",
+    ]
+    return any(g in lower for g in good)
 
 
 def _roastable(text: str) -> bool:
@@ -299,31 +316,51 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
 
 def _is_reply_worthy(tweet_text: str) -> bool:
     """Strict check: is this tweet something we should reply to as a dev?"""
-    # Hard reject topics we should NEVER reply to
-    reject_topics = [
+    lower = tweet_text.lower()
+
+    # HARD REJECT — never reply to these
+    reject = [
         "crypto", "nft", "airdrop", "giveaway", "elon", "trump", "biden",
         "sports", "football", "basketball", "celebrity", "kardashian",
         "follow me", "check my", "dm me", "subscribe", "onlyfans",
         "good morning", "gm everyone", "happy birthday", "rip ",
         "pray for", "god is", "jesus", "allah", "bible",
+        "twitter is cool", "follow back", "like and retweet",
+        "hiring", "we are ", "join us", "apply now",
+        "google play", "app store", "download our",
+        "release notes", "changelog", "v0.", "v1.", "update:",
+        "connectors", "integration", "available on every",
+        "artemis", "launch", "nasa", "space",
+        "inspired", "inspiring", "motivat",
     ]
-    lower = tweet_text.lower()
-    if any(r in lower for r in reject_topics):
+    if any(r in lower for r in reject):
         return False
 
-    # Must be about dev/tech/windows/PC topics
-    good_topics = [
-        "code", "coding", "programming", "developer", "dev ",
-        "javascript", "typescript", "python", "rust", "golang", "react",
-        "windows", "linux", "macos", "ubuntu",
-        "pc", "laptop", "desktop", "setup", "monitor",
-        "cpu", "gpu", "ram", "ssd", "nvme",
-        "optimize", "performance", "slow", "bloat", "debloat",
-        "vscode", "terminal", "cli", "git", "docker",
-        "framework", "library", "api", "database",
-        "startup", "saas", "open source", "github",
+    # HARD REJECT — known bot/brand accounts topics
+    brand_patterns = [
+        "create videos", "automate your", "boost your",
+        "try our", "check out our", "introducing our",
+        "we are aware", "service center", "overseas",
     ]
-    return any(g in lower for g in good_topics)
+    if any(b in lower for b in brand_patterns):
+        return False
+
+    # MUST be a PERSONAL tweet about dev/tech — not a brand announcement
+    personal_dev_topics = [
+        "i code", "i built", "i made", "i learned", "i hate",
+        "i love", "i use", "i think", "i switched",
+        "my setup", "my code", "my project", "my laptop", "my pc",
+        "what language", "what framework", "best language", "best framework",
+        "which ide", "which editor", "which os",
+        "anyone else", "am i the only", "unpopular opinion",
+        "hot take", "confession", "be honest",
+        "how do you", "what do you", "do you prefer",
+        "struggling with", "finally got", "just learned",
+        "why is windows", "why does windows", "windows is so",
+        "my windows", "fresh install", "task manager",
+        "debloat", "bloatware", "telemetry", "services tab",
+    ]
+    return any(p in lower for p in personal_dev_topics)
 
 
 def gen_reply(tweet_text: str) -> str | None:
@@ -377,16 +414,30 @@ def gen_reply(tweet_text: str) -> str | None:
     if not text or len(text) < 10 or len(text) > 280:
         return None
 
-    # GATE 4: Hard reject if product spam leaked through
+    # GATE 4: Hard reject spam/AI patterns in output
+    text_lower = text.lower()
     spam_patterns = [
-        "kills 220", "kills 280", "blocks 70", "280 services by default",
+        "kills 220", "kills 280", "blocks 70", "280 services",
+        "220 services", "70 telemetry", "70 endpoints",
         "github.com/redpersongpt", "oudenOS kills", "oudenOS blocks",
+        "oudenOS does this", "oudenOS fixes", "oudenOS can",
+        "check out oudenOS", "try oudenOS",
+        "here's why", "did you know", "introducing",
+        "as a developer", "in my experience",
     ]
-    if any(p.lower() in text.lower() for p in spam_patterns):
+    if any(p.lower() in text_lower for p in spam_patterns):
         return None
 
-    # If oudenOS is mentioned but tweet wasn't about windows help, reject
-    if not is_windows_help and ("oudenOS" in text or "ouden.cc" in text):
+    # If oudenOS/ouden.cc mentioned but tweet wasn't about windows help → reject
+    if not is_windows_help and ("oudenos" in text_lower or "ouden.cc" in text_lower):
+        return None
+
+    # Reject if reply is too generic / template
+    generic = [
+        "windows defaults are", "windows is just", "windows ships with",
+        "fresh windows", "microsoft doesnt", "microsoft knows",
+    ]
+    if sum(1 for g in generic if g in text_lower) >= 2:
         return None
 
     return text
