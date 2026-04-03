@@ -400,7 +400,7 @@ def check_cookie_health(page) -> bool:
 # ─── Playwright UI actions ────────────────────────────────────────
 
 def _post(page, text: str):
-    page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=25000)
+    page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=60000)
     time.sleep(3)
     c = page.locator('[data-testid="tweetTextarea_0"]').first
     c.click()
@@ -415,7 +415,7 @@ def _post(page, text: str):
 
 def _post_with_image(page, text: str, image_path: str):
     """Post tweet with an image attachment."""
-    page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=25000)
+    page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=60000)
     time.sleep(3)
     c = page.locator('[data-testid="tweetTextarea_0"]').first
     c.click()
@@ -491,7 +491,7 @@ def _post_thread(page, tweets: list[str]):
     time.sleep(3)
 
     # Navigate to own profile to find the tweet and reply to it
-    page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=25000)
+    page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=60000)
     time.sleep(2)
 
     # For subsequent tweets, use the compose reply flow
@@ -605,7 +605,7 @@ def _do_engage(page, log) -> int:
     if not queries: return 0
     q = random.choice(queries)
     print(f"  [engage] {q}")
-    page.goto(f"https://x.com/search?q={q}&src=typed_query&f=live", wait_until="domcontentloaded", timeout=25000)
+    page.goto(f"https://x.com/search?q={q}&src=typed_query&f=live", wait_until="domcontentloaded", timeout=60000)
     time.sleep(4)
     articles = page.locator('article[data-testid="tweet"]')
     count = articles.count()
@@ -640,7 +640,7 @@ def _do_engage(page, log) -> int:
 
 def _do_mentions(page, log) -> int:
     print("  [mentions] checking...")
-    page.goto("https://x.com/notifications/mentions", wait_until="domcontentloaded", timeout=25000)
+    page.goto("https://x.com/notifications/mentions", wait_until="domcontentloaded", timeout=60000)
     time.sleep(4)
     articles = page.locator('article[data-testid="tweet"]')
     replied = 0
@@ -666,7 +666,7 @@ def _do_mentions(page, log) -> int:
 
 def _do_browse(page, log) -> int:
     print("  [browse] timeline...")
-    page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=25000)
+    page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=60000)
     time.sleep(4)
     articles = page.locator('article[data-testid="tweet"]')
     liked = 0
@@ -692,7 +692,7 @@ def _do_quote(page, log) -> int:
     qs = _cfg().get("quote_queries", _searches()[:3])
     q = random.choice(qs)
     print(f"  [quote] {q}")
-    page.goto(f"https://x.com/search?q={q}&src=typed_query&f=top", wait_until="domcontentloaded", timeout=25000)
+    page.goto(f"https://x.com/search?q={q}&src=typed_query&f=top", wait_until="domcontentloaded", timeout=60000)
     time.sleep(4)
     articles = page.locator('article[data-testid="tweet"]')
     count = articles.count()
@@ -725,7 +725,7 @@ def _do_follow(page, log) -> int:
         targets = _searches()
     q = random.choice(targets)
     print(f"  [follow] searching: {q}")
-    page.goto(f"https://x.com/search?q={q}&src=typed_query&f=user", wait_until="domcontentloaded", timeout=25000)
+    page.goto(f"https://x.com/search?q={q}&src=typed_query&f=user", wait_until="domcontentloaded", timeout=60000)
     time.sleep(4)
 
     # Find follow buttons on the page
