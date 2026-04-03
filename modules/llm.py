@@ -162,7 +162,7 @@ def _generate_with_g4f(prompt: str, system: str, max_retries: int) -> str:
 
     # DDG (DuckDuckGo) is the most reliable free provider
     providers_to_try = [
-        {"model": "gpt-4o-mini", "provider": "DDG"},
+        {"model": "gpt-4o-mini", "provider": "DDGS"},
         {"model": "gpt-4o-mini", "provider": None},
         {"model": "gpt-3.5-turbo", "provider": None},
     ]
