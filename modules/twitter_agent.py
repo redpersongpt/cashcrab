@@ -316,6 +316,22 @@ def _new_release(log: dict) -> str | None:
 
 # ─── Content generation ──────────────────────────────────────────
 
+TWEET_FORMATS = [
+    # Standard topic tweet
+    "write one tweet about: {topic}. include {url}. under 270 chars. just the tweet, no quotes.",
+    # Question format (high engagement)
+    "write a question tweet about: {topic}. ask your followers something specific. under 250 chars. just the tweet.",
+    # Hot take format
+    "write a spicy hot take about: {topic}. be bold but factual. under 250 chars. just the tweet.",
+    # Personal experience format
+    "write a tweet sharing your experience with: {topic}. start with 'i' lowercase. be specific. under 250 chars.",
+    # Thread hook (standalone value)
+    "write a tweet that states a surprising fact about: {topic}. make people want to reply. under 250 chars.",
+    # Engagement bait (legitimate)
+    "write a 'be honest...' or 'unpopular opinion:' tweet about: {topic}. under 250 chars. just the tweet.",
+]
+
+
 def gen_tweet(release_tag: str | None = None) -> str | None:
     vp, url, name = _voice(), _url(), _product()
     if release_tag:
@@ -324,7 +340,9 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
         topics = _topics()
         if not topics:
             return None
-        prompt = f"write one tweet about: {random.choice(topics)}. include {url}. under 270 chars. just the tweet, no quotes."
+        topic = random.choice(topics)
+        fmt = random.choice(TWEET_FORMATS)
+        prompt = fmt.format(topic=topic, url=url, name=name)
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if len(text) > 280: text = text[:277]
     if not text or len(text) < 30:
