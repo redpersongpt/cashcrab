@@ -163,7 +163,8 @@ def _auth_menu():
             "Setup and account connections",
             [
                 "Connect Qwen OAuth (recommended brain)",
-                "Connect Twitter / X",
+                "Connect Twitter / X (OAuth)",
+                "Connect Twitter / X (browser cookies)",
                 "Save keys and webhooks",
                 "Show setup status",
                 "Remove a saved login",
@@ -178,10 +179,12 @@ def _auth_menu():
         elif choice == 2:
             _run_action("Connecting Twitter / X...", auth.twitter_login)
         elif choice == 3:
-            _run_action("Saving API keys...", auth.setup_api_keys)
+            _run_action("Extracting Twitter cookies...", auth.twitter_cookie_login)
         elif choice == 4:
-            _run_action("Loading status...", auth.status)
+            _run_action("Saving API keys...", auth.setup_api_keys)
         elif choice == 5:
+            _run_action("Loading status...", auth.status)
+        elif choice == 6:
             confirm = _ui().confirm("Remove saved Twitter / X login?", default=False)
             if confirm:
                 _run_action("Removing saved login...", lambda: auth.revoke("twitter"))
@@ -499,6 +502,14 @@ def twitter():
     from modules.auth import twitter_login
 
     twitter_login()
+
+
+@auth.command("twitter-cookies")
+def twitter_cookies():
+    """Link your Twitter/X account using browser cookies (no API keys needed)."""
+    from modules.auth import twitter_cookie_login
+
+    twitter_cookie_login()
 
 
 @auth.command()

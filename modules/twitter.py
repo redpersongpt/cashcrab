@@ -12,7 +12,7 @@ import tweepy
 
 from modules.config import ROOT, section
 from modules import llm, ui
-from modules.auth import twitter_access_token
+from modules.auth import twitter_access_token, twitter_auth_mode
 
 QUEUE_PATH = ROOT / "twitter_queue.json"
 
@@ -93,7 +93,11 @@ WORKFLOW_PRESETS = {
 }
 
 
-def _client() -> tweepy.Client:
+def _client():
+    mode = twitter_auth_mode()
+    if mode == "cookie":
+        from modules.twikit_client import CookieTwitterClient
+        return CookieTwitterClient()
     token = twitter_access_token()
     return tweepy.Client(access_token=token)
 

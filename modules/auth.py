@@ -22,6 +22,7 @@ TOKENS_DIR.mkdir(parents=True, exist_ok=True)
 
 YT_TOKEN = TOKENS_DIR / "youtube.json"
 TW_TOKEN = TOKENS_DIR / "twitter.json"
+TW_COOKIES = TOKENS_DIR / "twitter_cookies.json"
 KEYS_FILE = TOKENS_DIR / "api_keys.json"
 
 YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
@@ -245,14 +246,51 @@ def _twitter_refresh(store: dict) -> dict:
     return store
 
 
+def twitter_cookie_login():
+    """Extract Twitter cookies from browser for cookie-based auth."""
+    from modules import twikit_client
+
+    ui.info("Extracting Twitter cookies from your browser...")
+    ui.info("Make sure you're logged into x.com in Chrome.")
+    ui.divider()
+
+    cookies = twikit_client.extract_cookies_from_chrome()
+
+    if not cookies or not cookies.get("ct0") or not cookies.get("auth_token"):
+        ui.warn("Could not auto-extract cookies from Chrome. Falling back to manual entry.")
+        cookies = twikit_client.extract_cookies_manual()
+
+    ct0 = cookies.get("ct0", "")
+    auth_token = cookies.get("auth_token", "")
+    if not ct0 or not auth_token:
+        raise RuntimeError("Cookie extraction failed. Both ct0 and auth_token are needed.")
+
+    path = twikit_client.save_cookies_for_twikit(ct0, auth_token)
+    ui.success(f"Twitter cookies saved to {path}")
+    ui.success("Twitter / X is connected (cookie mode).")
+    return cookies
+
+
 def twitter_access_token() -> str:
     if not TW_TOKEN.exists():
+        # Check if cookies are available as fallback
+        if TW_COOKIES.exists():
+            return "__cookie_mode__"
         store = twitter_login()
     else:
         store = json.loads(TW_TOKEN.read_text())
     if time.time() > store.get("expires_at", 0) - 60:
         store = _twitter_refresh(store)
     return store["access_token"]
+
+
+def twitter_auth_mode() -> str:
+    """Return 'oauth' if OAuth token available, 'cookie' if cookies, 'none' otherwise."""
+    if TW_TOKEN.exists():
+        return "oauth"
+    if TW_COOKIES.exists():
+        return "cookie"
+    return "none"
 
 
 # ── Status ───────────────────────────────────────────
@@ -280,6 +318,8 @@ def status():
             rows.append(("Twitter / X", status_text, str(TW_TOKEN)))
         except Exception:
             rows.append(("Twitter / X", "Corrupt token", "Run cashcrab -> Setup -> Connect Twitter / X"))
+    elif TW_COOKIES.exists():
+        rows.append(("Twitter / X", "Connected (cookie mode)", str(TW_COOKIES)))
     else:
         rows.append(("Twitter / X", "Not connected", "Run cashcrab -> Setup -> Connect Twitter / X"))
 

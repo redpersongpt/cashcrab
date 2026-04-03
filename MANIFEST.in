@@ -1,0 +1,2 @@
+include README.md
+recursive-include modules/resources *.json *.png

@@ -17,7 +17,7 @@ import tweepy
 
 from modules.config import ROOT, section, optional_section
 from modules import llm, ui
-from modules.auth import twitter_access_token
+from modules.auth import twitter_access_token, twitter_auth_mode
 
 VOICE_PATH = ROOT / "voice_profile.json"
 ENGAGE_LOG_PATH = ROOT / "engage_log.json"
@@ -26,13 +26,20 @@ ENGAGE_LOG_PATH = ROOT / "engage_log.json"
 # Tweepy client helpers
 # ---------------------------------------------------------------------------
 
-def _client() -> tweepy.Client:
+def _client():
+    mode = twitter_auth_mode()
+    if mode == "cookie":
+        from modules.twikit_client import CookieTwitterClient
+        return CookieTwitterClient()
     token = twitter_access_token()
     return tweepy.Client(access_token=token)
 
 
-def _bearer_client() -> tweepy.Client | None:
+def _bearer_client():
     """App-only client using bearer token for read-heavy ops (if configured)."""
+    mode = twitter_auth_mode()
+    if mode == "cookie":
+        return None  # cookie client handles everything
     cfg = section("twitter")
     bearer = cfg.get("bearer_token", "")
     if not bearer:
@@ -40,8 +47,12 @@ def _bearer_client() -> tweepy.Client | None:
     return tweepy.Client(bearer_token=bearer)
 
 
-def _read_client() -> tweepy.Client:
-    """Best available client for reading. Bearer > user token."""
+def _read_client():
+    """Best available client for reading. Bearer > cookie > user token."""
+    mode = twitter_auth_mode()
+    if mode == "cookie":
+        from modules.twikit_client import CookieTwitterClient
+        return CookieTwitterClient()
     bc = _bearer_client()
     return bc if bc else _client()
 

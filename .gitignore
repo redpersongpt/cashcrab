@@ -12,3 +12,12 @@ venv/
 *.egg-info/
 jobs.sqlite
 leads_*.csv
+dist/
+.claude/
+.agents/
+.codex/
+voice_profile.json
+twitter_queue.json
+engage_log.json
+codex-workspace/
+codexhandoff.md
