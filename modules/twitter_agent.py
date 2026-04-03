@@ -429,18 +429,22 @@ def gen_reply(tweet_text: str) -> str | None:
     is_ai_topic = any(a in tweet_text.lower() for a in [
         "ai will replace", "ai replacing", "chatgpt", "copilot",
         "vibe coding", "prompt engineer", "coding is dead",
-        "ai bubble", "ai hype", "ai startup", "wrapper",
+        "ai bubble", "ai hype", "ai startup",
         "ai generated", "no more developer", "ai does it",
+        "ai is useless", "ai sucks", "ai cant code",
+        "learn to code", "bootcamp",
     ])
 
     # Generate reply based on context
     if is_ai_topic:
         prompt = (
             f'someone tweeted about AI: "{tweet_text[:200]}"\n\n'
-            f'reply with a strong opinion. be specific to their point. '
-            f'if its a bad take, roast hard with facts and humor. '
-            f'if its a good take, agree and add your angle. '
-            f'do NOT mention oudenOS. this is about AI not windows. under 180 chars.'
+            f'reply as a pro-AI developer. you USE ai tools daily and love them. '
+            f'if someone hates on AI: defend it with your experience. '
+            f'if someone builds with AI: support them, ask about the project. '
+            f'if someone gatekeeps coding: call it out, AI makes coding accessible. '
+            f'be specific to their point. be funny. '
+            f'do NOT mention oudenOS. under 180 chars.'
         )
     elif is_windows_help:
         prompt = (
