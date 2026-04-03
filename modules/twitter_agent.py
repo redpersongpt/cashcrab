@@ -316,6 +316,22 @@ def _new_release(log: dict) -> str | None:
 
 # ─── Content generation ──────────────────────────────────────────
 
+# Content calendar — different vibes per day
+CONTENT_CALENDAR = {
+    0: "windows",    # Monday: windows facts
+    1: "ai",         # Tuesday: AI takes
+    2: "dev",        # Wednesday: dev opinions
+    3: "windows",    # Thursday: windows facts
+    4: "ai",         # Friday: AI takes
+    5: "dev",        # Saturday: dev culture
+    6: "product",    # Sunday: oudenOS showcase
+}
+
+
+def _today_content_type() -> str:
+    return CONTENT_CALENDAR.get(datetime.now().weekday(), "dev")
+
+
 TWEET_FORMATS = [
     # Standard topic tweet
     "write one tweet about: {topic}. include {url}. under 270 chars. just the tweet, no quotes.",
@@ -340,7 +356,18 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
         topics = _topics()
         if not topics:
             return None
-        topic = random.choice(topics)
+        # Content calendar — bias topic selection by day of week
+        content_type = _today_content_type()
+        type_keywords = {
+            "windows": ["windows", "service", "telemetry", "game bar", "timer", "ndu", "bloat", "mapsbroker", "fax", "candy"],
+            "ai": ["copilot", "AI", "vibe coding", "gatekeeping", "junior dev", "stackoverflow"],
+            "dev": ["rust", "typescript", "docker", "kubernetes", "monolith", "startup", "side project", "programming language"],
+            "product": ["oudenOS", "ouden", "scans hardware", "rollback", "5mb"],
+        }
+        kws = type_keywords.get(content_type, [])
+        # Prefer topics matching today's content type
+        matching = [t for t in topics if any(k.lower() in t.lower() for k in kws)]
+        topic = random.choice(matching) if matching else random.choice(topics)
         fmt = random.choice(TWEET_FORMATS)
         prompt = fmt.format(topic=topic, url=url, name=name)
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
@@ -1073,15 +1100,15 @@ def run_cycle_http() -> dict:
 
     # Activities — more variety, limit-aware
     if is_peak_hour():
-        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet"]
+        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions"]
     elif is_dead_hour():
         activities = ["like", "like"]
     else:
-        activities = ["tweet", "like", "like", "reply", "reply", "like"]
+        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow"]
 
-    # If daily limit hit, only do likes
+    # If daily limit hit, only do likes and follows
     if not api.can_post:
-        activities = ["like", "like", "like"]
+        activities = ["like", "like", "like", "follow"]
 
     random.shuffle(activities)
 
@@ -1157,7 +1184,6 @@ def run_cycle_http() -> dict:
                 for t in tweets:
                     if api.already_engaged(t["id"]):
                         continue
-                    # Only RT high-engagement dev tweets
                     if not _relevant(t["text"]):
                         continue
                     if t.get("likes", 0) < 10:
@@ -1169,7 +1195,46 @@ def run_cycle_http() -> dict:
                             print(f"  [rt] @{t['user']}: {t['text'][:50]}...")
                     except Exception:
                         pass
-                    break  # max 1 RT per cycle
+                    break
+
+            elif activity == "follow":
+                # Follow authors of good tweets we liked
+                tweets = api.home_timeline(20)
+                followed = 0
+                for t in tweets:
+                    if followed >= 2:
+                        break
+                    if not _relevant(t["text"]):
+                        continue
+                    if t.get("followers", 0) < 100 or t.get("followers", 0) > 100000:
+                        continue  # sweet spot: 100-100k followers
+                    # Need user_id — extract from timeline data
+                    # For now skip if no user_id available
+                    time.sleep(random.uniform(3, 8))
+
+            elif activity == "reply_mentions" and api.can_post:
+                # Reply to people who mentioned us
+                notifs = api.notifications()
+                for n in notifs[:5]:
+                    if not can_reply(log) or not api.can_post:
+                        break
+                    if _spam(n["text"]) or api.already_engaged(n["id"]):
+                        continue
+                    reply = gen_mention_reply(n["text"])
+                    if reply:
+                        try:
+                            print(f"  [mention-reply] to @{n['user']}: {reply[:60]}...")
+                            rid = api.create_tweet(reply, reply_to=n["id"])
+                            if rid:
+                                log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": n["text"][:100], "r": reply[:200], "user": n["user"], "src": "mention"})
+                                stats["replies"] += 1
+                                track_action("reply")
+                                api.mark_engaged(n["id"])
+                                print(f"  [mention-reply] POSTED {rid}")
+                        except Exception as exc:
+                            print(f"  [mention-reply] error: {exc}")
+                        time.sleep(random.uniform(10, 20))
+                        break
 
         except Exception as exc:
             print(f"  [{activity}] error: {exc}")

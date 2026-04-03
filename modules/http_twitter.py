@@ -229,6 +229,54 @@ class HttpTwitter:
             })
         return results
 
+    def follow(self, user_id: str) -> bool:
+        """Follow a user by ID."""
+        if self.already_engaged(f"follow_{user_id}"):
+            return False
+        r = self._session.post(
+            "https://x.com/i/api/1.1/friendships/create.json",
+            data={"user_id": user_id},
+            headers={**self._headers(), "content-type": "application/x-www-form-urlencoded"},
+        )
+        self._refresh_ct0(r)
+        if r.status_code == 200:
+            self.mark_engaged(f"follow_{user_id}")
+            return True
+        return False
+
+    def get_own_tweets(self, user_id: str, count: int = 10) -> list[dict]:
+        """Get own tweets for performance tracking."""
+        r = self._session.get(
+            f"https://x.com/i/api/graphql/{QID.get('UserTweets', '78bXcjBXrR1q_uIdj22zhQ')}/UserTweets",
+            params={
+                "variables": json.dumps({"userId": user_id, "count": count, "includePromotedContent": False, "withQuickPromoteEligibilityTweetFields": False, "withVoice": False, "withV2Timeline": True}),
+                "features": json.dumps(FEATURES),
+            },
+            headers=self._headers(),
+        )
+        self._refresh_ct0(r)
+        if r.status_code != 200:
+            return []
+        # Try both timeline paths
+        for path in [
+            ["data", "user", "result", "timeline_v2", "timeline", "instructions"],
+            ["data", "user", "result", "timeline", "timeline", "instructions"],
+        ]:
+            result = self._parse_timeline(r.json(), path)
+            if result:
+                return result
+        return []
+
+    def delete_tweet(self, tweet_id: str) -> bool:
+        """Delete a tweet."""
+        r = self._session.post(
+            "https://x.com/i/api/graphql/VaenaVgh5q5ih7kvyVjgtg/DeleteTweet",
+            json={"variables": {"tweet_id": tweet_id, "dark_request": False}, "queryId": "VaenaVgh5q5ih7kvyVjgtg"},
+            headers=self._headers(),
+        )
+        self._refresh_ct0(r)
+        return r.status_code == 200
+
     def _parse_timeline(self, data: dict, path: list[str]) -> list[dict]:
         obj = data
         for key in path:
