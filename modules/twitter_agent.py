@@ -253,7 +253,7 @@ def _relevant(text: str) -> bool:
     ]
     has_personal = any(p in lower for p in personal_signals)
 
-    # Must be about dev/tech
+    # Must be about dev/tech/AI
     tech = [
         "code", "coding", "programming", "developer", "dev ",
         "javascript", "typescript", "python", "rust", "react",
@@ -261,6 +261,8 @@ def _relevant(text: str) -> bool:
         "cpu", "gpu", "ram", "performance",
         "vscode", "terminal", "git", "docker",
         "framework", "open source",
+        "ai ", "chatgpt", "copilot", "llm", "prompt",
+        "vibe coding", "ai replace", "ai bubble",
     ]
     has_tech = any(t in lower for t in tech)
 
@@ -363,7 +365,7 @@ def _is_reply_worthy(tweet_text: str) -> bool:
     if any(b in lower for b in brand_patterns):
         return False
 
-    # MUST be a PERSONAL tweet about dev/tech — not a brand announcement
+    # MUST be a PERSONAL tweet about dev/tech/AI — not a brand announcement
     personal_dev_topics = [
         "i code", "i built", "i made", "i learned", "i hate",
         "i love", "i use", "i think", "i switched",
@@ -377,6 +379,20 @@ def _is_reply_worthy(tweet_text: str) -> bool:
         "why is windows", "why does windows", "windows is so",
         "my windows", "fresh install", "task manager",
         "debloat", "bloatware", "telemetry", "services tab",
+        # AI discourse
+        "ai will replace", "ai replacing", "ai is going to",
+        "chatgpt can", "copilot is", "vibe coding",
+        "prompt engineer", "ai bubble", "ai hype",
+        "coding is dead", "developers are done", "no more coders",
+        "ai generated", "ai writes code", "ai vs developer",
+        "just use chatgpt", "ai startup", "wrapper around",
+        "ai took my", "learn to code", "should i learn",
+        "ai does it better", "replaced by ai",
+        # general tech opinions
+        "tech industry", "silicon valley", "layoffs",
+        "remote work", "return to office",
+        "open source", "free software",
+        "junior developer", "senior developer",
     ]
     return any(p in lower for p in personal_dev_topics)
 
@@ -409,8 +425,24 @@ def gen_reply(tweet_text: str) -> str | None:
         "clean windows", "speed up windows", "windows optimization",
     ])
 
-    # Generate reply
-    if is_windows_help:
+    # Detect AI discourse
+    is_ai_topic = any(a in tweet_text.lower() for a in [
+        "ai will replace", "ai replacing", "chatgpt", "copilot",
+        "vibe coding", "prompt engineer", "coding is dead",
+        "ai bubble", "ai hype", "ai startup", "wrapper",
+        "ai generated", "no more developer", "ai does it",
+    ])
+
+    # Generate reply based on context
+    if is_ai_topic:
+        prompt = (
+            f'someone tweeted about AI: "{tweet_text[:200]}"\n\n'
+            f'reply with a strong opinion. be specific to their point. '
+            f'if its a bad take, roast hard with facts and humor. '
+            f'if its a good take, agree and add your angle. '
+            f'do NOT mention oudenOS. this is about AI not windows. under 180 chars.'
+        )
+    elif is_windows_help:
         prompt = (
             f'someone needs help with windows: "{tweet_text[:200]}"\n\n'
             f'give a specific helpful tip. you can casually mention oudenOS (ouden.cc) '
