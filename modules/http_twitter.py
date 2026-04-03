@@ -187,8 +187,8 @@ class HttpTwitter:
             pass
         return False
 
-    def create_tweet(self, text: str, reply_to: str | None = None) -> str | None:
-        """Post a tweet or reply. Returns tweet ID or None."""
+    def create_tweet(self, text: str, reply_to: str | None = None, max_retries: int = 2) -> str | None:
+        """Post a tweet or reply. Returns tweet ID or None. Retries on transient 226."""
         if self._daily_limit_hit:
             return None
 
@@ -227,6 +227,13 @@ class HttpTwitter:
                 self._daily_limit_hit = True
                 print("  [LIMIT] Daily tweet limit reached. Switching to like-only mode.")
                 return None
+            if code == 226 and max_retries > 0:
+                # Transient anti-bot — exponential backoff retry
+                wait = (3 - max_retries) * 15 + 10  # 10s, 25s
+                print(f"  [226] Anti-bot triggered. Waiting {wait}s and retrying...")
+                import time
+                time.sleep(wait)
+                return self.create_tweet(text, reply_to, max_retries - 1)
             raise RuntimeError(f"CreateTweet: {err[:150]}")
 
         tweet_id = (
@@ -259,6 +266,49 @@ class HttpTwitter:
         except Exception:
             pass
         return False
+
+    def quote_tweet(self, tweet_id: str, comment: str) -> str | None:
+        """Quote tweet. Returns new tweet ID or None."""
+        if self._daily_limit_hit or self.already_engaged(tweet_id):
+            return None
+        variables = {
+            "tweet_text": comment,
+            "attachment_url": f"https://x.com/i/status/{tweet_id}",
+            "dark_request": False,
+            "media": {"media_entities": [], "possibly_sensitive": False},
+            "semantic_annotation_ids": [],
+        }
+        try:
+            r = self._session.post(
+                f"https://x.com/i/api/graphql/{QID['CreateTweet']}/CreateTweet",
+                json={"variables": variables, "features": FEATURES, "queryId": QID["CreateTweet"]},
+                headers=self._headers(),
+            )
+            self._refresh_ct0(r)
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            if "errors" in data:
+                err = data.get("errors", [{}])[0].get("message", "")
+                if "daily limit" in err.lower():
+                    self._daily_limit_hit = True
+                return None
+            tid = data.get("data", {}).get("create_tweet", {}).get("tweet_results", {}).get("result", {}).get("rest_id", "")
+            if tid:
+                self.mark_engaged(tweet_id)
+            return tid or None
+        except Exception:
+            return None
+
+    def send_webhook(self, text: str, webhook_url: str | None = None):
+        """Send notification to Discord/Slack webhook."""
+        if not webhook_url:
+            return
+        try:
+            import httpx
+            httpx.post(webhook_url, json={"content": text}, timeout=5)
+        except Exception:
+            pass
 
     def notifications(self) -> list[dict]:
         r = self._session.get(

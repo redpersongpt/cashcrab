@@ -28,6 +28,7 @@ from modules import llm
 AGENT_LOG = ROOT / "agent_log.json"
 VOICE_PATH = ROOT / "voice_profile.json"
 RELEASE_CACHE = ROOT / "latest_release.json"
+REPLIED_USERS_PATH = ROOT / "replied_users.json"
 ANALYTICS_PATH = ROOT / "agent_analytics.json"
 
 # Rate limits (verified account, aggressive but safe)
@@ -276,6 +277,88 @@ def _roastable(text: str) -> bool:
 
 def _quotable(text: str) -> bool:
     return any(t in text.lower() for t in _quote_triggers()) and len(text) > 30
+
+
+# ─── Reply cooldown per user ─────────────────────────────────────
+
+def _load_replied_users() -> dict:
+    if REPLIED_USERS_PATH.exists():
+        try:
+            return json.loads(REPLIED_USERS_PATH.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _save_replied_users(data: dict):
+    # Keep last 7 days only
+    cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    cleaned = {k: v for k, v in data.items() if v.get("date", "") >= cutoff}
+    try:
+        REPLIED_USERS_PATH.write_text(json.dumps(cleaned, indent=2))
+    except Exception:
+        pass
+
+
+def _can_reply_to_user(username: str) -> bool:
+    """Max 1 reply per user per day."""
+    if not username:
+        return False
+    data = _load_replied_users()
+    today = datetime.now().strftime("%Y-%m-%d")
+    entry = data.get(username.lower())
+    if entry and entry.get("date") == today:
+        return False
+    return True
+
+
+def _mark_replied_user(username: str):
+    data = _load_replied_users()
+    data[username.lower()] = {"date": datetime.now().strftime("%Y-%m-%d")}
+    _save_replied_users(data)
+
+
+# ─── Engagement scoring ──────────────────────────────────────────
+
+def _score_tweet(tweet: dict) -> int:
+    """Score a tweet for reply priority. Higher = better target."""
+    score = 0
+    followers = tweet.get("followers", 0)
+    likes = tweet.get("likes", 0)
+    replies = tweet.get("replies", 0)
+
+    # Sweet spot: 500-50k followers (big enough to matter, small enough to notice)
+    if 500 <= followers <= 5000:
+        score += 30
+    elif 5000 < followers <= 50000:
+        score += 20
+    elif 50000 < followers <= 200000:
+        score += 10
+    elif followers < 100:
+        score -= 10
+
+    # Some engagement but not viral (they'll see your reply)
+    if 1 <= likes <= 20:
+        score += 15
+    elif 20 < likes <= 100:
+        score += 10
+    elif likes > 500:
+        score -= 5  # too viral, reply gets buried
+
+    # Few replies = more visible reply
+    if replies < 5:
+        score += 15
+    elif replies < 20:
+        score += 5
+    elif replies > 50:
+        score -= 10
+
+    return score
+
+
+def _sort_by_engagement(tweets: list[dict]) -> list[dict]:
+    """Sort tweets by engagement score (best targets first)."""
+    return sorted(tweets, key=_score_tweet, reverse=True)
 
 
 # ─── Release checking ────────────────────────────────────────────
@@ -1097,11 +1180,11 @@ def run_cycle_http() -> dict:
 
     # Activities — more variety, limit-aware
     if is_peak_hour():
-        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions"]
+        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions", "quote"]
     elif is_dead_hour():
         activities = ["like", "like"]
     else:
-        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow"]
+        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow", "quote"]
 
     # If daily limit hit, only do likes and follows
     if not api.can_post:
@@ -1126,6 +1209,9 @@ def run_cycle_http() -> dict:
                         track_action("tweet")
                         recent_texts.add(text[:50].lower())
                         print(f"  [tweet] POSTED {tid}")
+                        webhook = _cfg().get("discord_webhook", "")
+                        if webhook:
+                            api.send_webhook(f"Tweet posted: {text[:100]}", webhook)
 
             elif activity == "like" and can_like(log):
                 tweets = timeline
@@ -1147,36 +1233,71 @@ def run_cycle_http() -> dict:
                     time.sleep(random.uniform(2, 6))
 
             elif activity == "reply" and can_reply(log) and api.can_post:
-                tweets = timeline
-                for t in tweets:
+                # Sort by engagement score — reply to best targets first
+                ranked = _sort_by_engagement(timeline)
+                for t in ranked:
                     if not can_reply(log) or not api.can_post:
                         break
                     if api.already_engaged(t["id"]):
                         continue
                     if api.is_blacklisted(t.get("user", "")):
                         continue
+                    if not _can_reply_to_user(t.get("user", "")):
+                        continue  # already replied to this user today
                     if not _is_reply_worthy(t["text"]):
                         continue
                     if not t.get("user") or not t.get("id"):
-                        continue
-                    if random.random() > 0.40:
                         continue
 
                     reply = gen_reply(t["text"])
                     if reply:
                         try:
-                            print(f"  [reply] to @{t['user']}: {reply[:60]}...")
+                            score = _score_tweet(t)
+                            print(f"  [reply] to @{t['user']} (score:{score}, {t.get('followers',0)} followers): {reply[:60]}...")
                             rid = api.create_tweet(reply, reply_to=t["id"])
                             if rid:
-                                log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": t["text"][:100], "r": reply[:200], "user": t["user"], "id": rid})
+                                log.setdefault("replies", []).append({
+                                    "date": datetime.now().isoformat(),
+                                    "to": t["text"][:100], "r": reply[:200],
+                                    "user": t["user"], "id": rid,
+                                    "score": score, "followers": t.get("followers", 0),
+                                })
                                 stats["replies"] += 1
                                 track_action("reply")
                                 api.mark_engaged(t["id"])
+                                _mark_replied_user(t["user"])
                                 print(f"  [reply] POSTED {rid}")
+
+                                # Webhook notification
+                                webhook = _cfg().get("discord_webhook", "")
+                                if webhook:
+                                    api.send_webhook(f"Reply posted to @{t['user']}: {reply[:100]}", webhook)
                         except Exception as exc:
                             print(f"  [reply] error: {exc}")
                         time.sleep(random.uniform(10, 25))
-                        break  # max 1 reply per sub-activity
+                        break
+
+            elif activity == "quote" and api.can_post:
+                ranked = _sort_by_engagement(timeline)
+                for t in ranked:
+                    if api.already_engaged(t["id"]):
+                        continue
+                    if not _quotable(t["text"]):
+                        continue
+                    if t.get("likes", 0) < 5:
+                        continue  # only quote tweets with some traction
+                    comment = gen_quote(t["text"])
+                    if comment:
+                        try:
+                            print(f"  [quote] @{t['user']}: {comment[:60]}...")
+                            qid = api.quote_tweet(t["id"], comment)
+                            if qid:
+                                stats["quotes"] = stats.get("quotes", 0) + 1
+                                track_action("quote")
+                                print(f"  [quote] POSTED {qid}")
+                        except Exception as exc:
+                            print(f"  [quote] error: {exc}")
+                        break
 
             elif activity == "retweet" and api.can_post:
                 tweets = timeline
