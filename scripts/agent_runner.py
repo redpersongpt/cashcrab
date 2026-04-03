@@ -61,6 +61,9 @@ def post_with_playwright(cookies: dict, text: str, reply_to_url: str | None = No
             except Exception:
                 pass
 
+            # Wait for compose area to be ready
+            page.wait_for_selector('[data-testid="tweetTextarea_0"]', timeout=30000)
+            time.sleep(1)
             compose = page.locator('[data-testid="tweetTextarea_0"]').first
             compose.click(timeout=10000)
             time.sleep(0.5)
