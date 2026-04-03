@@ -499,7 +499,7 @@ def _quote(page, article, comment: str) -> bool:
     time.sleep(0.3)
     page.keyboard.type(comment, delay=random.randint(8, 15))
     time.sleep(1)
-    page.locator('[data-testid="tweetButton"]').click(force=True, timeout=10000)
+    page.locator('[data-testid="tweetButton"]').click(force=True, timeout=30000)
     time.sleep(4)
     return True
 
@@ -546,7 +546,7 @@ def _post_thread(page, tweets: list[str]):
         time.sleep(1)
 
     # Post all at once
-    page.locator('[data-testid="tweetButton"]').click(force=True, timeout=10000)
+    page.locator('[data-testid="tweetButton"]').click(force=True, timeout=30000)
     time.sleep(5)
 
 
@@ -722,7 +722,7 @@ def _do_mentions(page, log) -> int:
                     time.sleep(0.5)
                     page.keyboard.type(reply, delay=random.randint(8, 15))
                     time.sleep(1)
-                    page.locator('[data-testid="tweetButton"]').click(force=True, timeout=10000)
+                    page.locator('[data-testid="tweetButton"]').click(force=True, timeout=30000)
                     time.sleep(4)
                     log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": n["text"][:100], "r": reply[:200], "src": "mention"})
                     replied += 1
