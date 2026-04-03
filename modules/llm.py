@@ -157,23 +157,36 @@ def _generate_with_codex(prompt: str, system: str, max_retries: int) -> str:
 # ─── Main generate with triple-LLM fallback ──────────────────────
 
 def _generate_with_g4f(prompt: str, system: str, max_retries: int) -> str:
-    """Generate via g4f (free, no API key, uses GPT-4o-mini)."""
+    """Generate via g4f (free, no API key). Tries multiple free providers."""
     from g4f.client import Client as G4F
-    client = G4F()
-    for attempt in range(max_retries):
-        try:
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-            )
-            text = resp.choices[0].message.content.strip()
-            if text:
-                return text
-        except Exception as exc:
-            if attempt == max_retries - 1:
-                raise RuntimeError(f"g4f failed: {exc}") from exc
-            time.sleep(2 ** attempt)
-    return ""
+
+    # DDG (DuckDuckGo) is the most reliable free provider
+    providers_to_try = [
+        {"model": "gpt-4o-mini", "provider": "DDG"},
+        {"model": "gpt-4o-mini", "provider": None},
+        {"model": "gpt-3.5-turbo", "provider": None},
+    ]
+
+    for provider_cfg in providers_to_try:
+        for attempt in range(max_retries):
+            try:
+                client = G4F()
+                kwargs = {
+                    "model": provider_cfg["model"],
+                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                }
+                if provider_cfg.get("provider"):
+                    import g4f.Provider
+                    kwargs["provider"] = getattr(g4f.Provider, provider_cfg["provider"], None)
+                resp = client.chat.completions.create(**kwargs)
+                text = (resp.choices[0].message.content or "").strip()
+                if text:
+                    return text
+            except Exception as exc:
+                if attempt == max_retries - 1:
+                    break  # try next provider
+                time.sleep(1)
+    raise RuntimeError("g4f: all providers failed")
 
 
 def generate(prompt: str, system: str = "You are a helpful assistant.", max_retries: int = 2) -> str:
