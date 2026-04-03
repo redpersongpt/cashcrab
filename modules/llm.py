@@ -108,7 +108,7 @@ def _generate_with_gemini(prompt: str, system: str, max_retries: int) -> str:
         try:
             result = subprocess.run(
                 [gemini_bin, "-p", "respond with only the requested text. no markdown. no backticks."],
-                input=full_prompt, check=False, capture_output=True, text=True, timeout=45,
+                input=full_prompt, check=False, capture_output=True, text=True, timeout=90,
             )
             lines = [l for l in (result.stdout or "").split("\n")
                      if not l.startswith(("Keychain", "Using FileKeychain", "Loaded cached"))]
