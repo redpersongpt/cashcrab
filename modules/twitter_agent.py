@@ -745,16 +745,14 @@ def _today_content_type() -> str:
 
 
 TWEET_FORMATS = [
-    # Fact tweet with link
-    "write one tweet about: {topic}. include {url}. under 270 chars. just the tweet, no quotes.",
-    # Question (engagement)
-    "write a question about: {topic}. ask followers if they knew this. under 250 chars.",
-    # Hot take
-    "write a bold take about: {topic}. be factual. under 250 chars.",
-    # Personal discovery
-    "write a tweet like you just found out about: {topic}. react naturally. under 250 chars.",
-    # Surprising fact
-    "state a surprising fact about: {topic}. make people want to check for themselves. under 250 chars.",
+    # Windows fact with link
+    "state this windows fact: {topic}. include {url}. under 270 chars. just the tweet.",
+    # Discovery format
+    "write a tweet like you just discovered: {topic}. react like a normal person finding out. under 250 chars.",
+    # Question format
+    "ask your followers if they knew about this: {topic}. make them want to check. under 250 chars.",
+    # Direct statement
+    "state this fact directly: {topic}. no fluff. under 250 chars.",
 ]
 
 
@@ -779,16 +777,7 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
         matching = [t for t in topics if any(k.lower() in t.lower() for k in kws)]
         topic = random.choice(matching) if matching else random.choice(topics)
 
-        # Smart format selection — bias towards formats that perform well
-        perf = _load_performance()
-        best_format = get_best_performing_format(perf)
-        if best_format == "questions":
-            # Bias towards question formats
-            fmt = random.choice([TWEET_FORMATS[1], TWEET_FORMATS[1], TWEET_FORMATS[4]] + TWEET_FORMATS)
-        elif best_format == "facts":
-            fmt = random.choice([TWEET_FORMATS[0], TWEET_FORMATS[2], TWEET_FORMATS[4]] + TWEET_FORMATS)
-        else:
-            fmt = random.choice(TWEET_FORMATS)
+        fmt = random.choice(TWEET_FORMATS)
 
         prompt = fmt.format(topic=topic, url=url, name=name)
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
@@ -1622,8 +1611,6 @@ def run_cycle_http() -> dict:
                     time.sleep(random.uniform(2, 6))
 
             elif activity == "reply" and can_reply(log) and api.can_post:
-                from modules.canned_replies import get_canned_reply
-
                 ranked = _sort_by_engagement(timeline)
                 for t in ranked:
                     if not can_reply(log) or not api.can_post:
@@ -1636,16 +1623,10 @@ def run_cycle_http() -> dict:
                         continue
                     if not t.get("user") or not t.get("id"):
                         continue
-
-                    # Try canned reply first (instant, zero AI, zero detection risk)
-                    reply = get_canned_reply(t["text"])
-                    if reply:
-                        print(f"  [canned] matched: {t['text'][:40]}...")
-                    else:
-                        # Fall back to LLM for Windows-specific tweets
-                        if not _is_reply_worthy(t["text"]):
-                            continue
-                        reply = gen_reply(t["text"])
+                    # ONLY reply to Windows-specific tweets. Nothing else.
+                    if not _is_reply_worthy(t["text"]):
+                        continue
+                    reply = gen_reply(t["text"])
                     if reply:
                         try:
                             score = _score_tweet(t)
