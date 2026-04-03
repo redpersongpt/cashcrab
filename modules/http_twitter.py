@@ -381,6 +381,102 @@ class HttpTwitter:
         self._refresh_ct0(r)
         return r.status_code == 200
 
+    def get_tweet_replies(self, tweet_id: str) -> list[dict]:
+        """Get replies to a specific tweet (for conversation tracking)."""
+        try:
+            r = self._session.get(
+                f"https://x.com/i/api/graphql/oPRG-p-gbWDkVBBjCfnDsA/TweetDetail",
+                params={
+                    "variables": json.dumps({"focalTweetId": tweet_id, "with_rux_injections": False, "rankingMode": "Relevance", "includePromotedContent": False, "withCommunity": True, "withQuickPromoteEligibilityTweetFields": True, "withBirdwatchNotes": True, "withVoice": True}),
+                    "features": json.dumps(FEATURES),
+                },
+                headers=self._headers(),
+            )
+            self._refresh_ct0(r)
+            if r.status_code != 200:
+                return []
+            data = r.json()
+            replies = []
+            for inst in data.get("data", {}).get("threaded_conversation_with_injections_v2", {}).get("instructions", []):
+                for entry in inst.get("entries", []):
+                    items = entry.get("content", {}).get("items", [])
+                    for item in items:
+                        result = item.get("item", {}).get("itemContent", {}).get("tweet_results", {}).get("result", {})
+                        if result.get("__typename") == "TweetWithVisibilityResults":
+                            result = result.get("tweet", result)
+                        leg = result.get("legacy", {})
+                        core = result.get("core", {}).get("user_results", {}).get("result", {})
+                        text = leg.get("full_text", "")
+                        tid = result.get("rest_id", "")
+                        if text and tid and tid != tweet_id:
+                            replies.append({
+                                "id": tid,
+                                "text": text,
+                                "user": core.get("core", {}).get("screen_name", "") or core.get("legacy", {}).get("screen_name", ""),
+                                "in_reply_to": leg.get("in_reply_to_status_id_str", ""),
+                            })
+            return replies
+        except Exception:
+            return []
+
+    def get_follower_ids(self, user_id: str, count: int = 20) -> list[str]:
+        """Get recent follower user IDs."""
+        try:
+            r = self._session.get(
+                "https://x.com/i/api/graphql/rRXFSG5vR6drKr5M37YOTw/Followers",
+                params={
+                    "variables": json.dumps({"userId": user_id, "count": count, "includePromotedContent": False}),
+                    "features": json.dumps(FEATURES),
+                },
+                headers=self._headers(),
+            )
+            self._refresh_ct0(r)
+            if r.status_code != 200:
+                return []
+            data = r.json()
+            ids = []
+            for inst in data.get("data", {}).get("user", {}).get("result", {}).get("timeline", {}).get("timeline", {}).get("instructions", []):
+                for entry in inst.get("entries", []):
+                    result = entry.get("content", {}).get("itemContent", {}).get("user_results", {}).get("result", {})
+                    uid = result.get("rest_id", "")
+                    if uid:
+                        ids.append(uid)
+            return ids
+        except Exception:
+            return []
+
+    def get_tweet_metrics(self, tweet_id: str) -> dict:
+        """Get engagement metrics for a specific tweet."""
+        try:
+            r = self._session.get(
+                f"https://x.com/i/api/graphql/oPRG-p-gbWDkVBBjCfnDsA/TweetDetail",
+                params={
+                    "variables": json.dumps({"focalTweetId": tweet_id, "with_rux_injections": False, "rankingMode": "Relevance", "includePromotedContent": False}),
+                    "features": json.dumps(FEATURES),
+                },
+                headers=self._headers(),
+            )
+            self._refresh_ct0(r)
+            if r.status_code != 200:
+                return {}
+            data = r.json()
+            for inst in data.get("data", {}).get("threaded_conversation_with_injections_v2", {}).get("instructions", []):
+                for entry in inst.get("entries", []):
+                    result = entry.get("content", {}).get("itemContent", {}).get("tweet_results", {}).get("result", {})
+                    if result.get("__typename") == "TweetWithVisibilityResults":
+                        result = result.get("tweet", result)
+                    if result.get("rest_id") == tweet_id:
+                        leg = result.get("legacy", {})
+                        return {
+                            "likes": leg.get("favorite_count", 0),
+                            "retweets": leg.get("retweet_count", 0),
+                            "replies": leg.get("reply_count", 0),
+                            "views": result.get("views", {}).get("count", "0"),
+                        }
+            return {}
+        except Exception:
+            return {}
+
     def _parse_timeline(self, data: dict, path: list[str]) -> list[dict]:
         obj = data
         for key in path:

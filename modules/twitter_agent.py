@@ -30,6 +30,7 @@ VOICE_PATH = ROOT / "voice_profile.json"
 RELEASE_CACHE = ROOT / "latest_release.json"
 REPLIED_USERS_PATH = ROOT / "replied_users.json"
 ANALYTICS_PATH = ROOT / "agent_analytics.json"
+PERFORMANCE_PATH = ROOT / "tweet_performance.json"
 
 # Rate limits (verified account, aggressive but safe)
 MAX_TWEETS_PER_DAY = 25
@@ -360,6 +361,149 @@ def _sort_by_engagement(tweets: list[dict]) -> list[dict]:
     return sorted(tweets, key=_score_tweet, reverse=True)
 
 
+# ─── Tweet performance tracking ──────────────────────────────────
+
+def _load_performance() -> dict:
+    if PERFORMANCE_PATH.exists():
+        try:
+            return json.loads(PERFORMANCE_PATH.read_text())
+        except Exception:
+            pass
+    return {"tweets": {}}
+
+
+def _save_performance(data: dict):
+    try:
+        PERFORMANCE_PATH.write_text(json.dumps(data, indent=2))
+    except Exception:
+        pass
+
+
+def track_tweet_performance(api) -> dict:
+    """Check performance of our recent tweets. Returns stats."""
+    perf = _load_performance()
+    log = _load_log()
+    stats = {"checked": 0, "total_likes": 0, "total_views": 0, "flops": []}
+
+    for tweet in log.get("tweets", [])[-20:]:
+        tid = tweet.get("id", "")
+        if not tid:
+            continue
+
+        # Skip if already checked recently
+        existing = perf["tweets"].get(tid, {})
+        if existing.get("last_check", "") >= (datetime.now() - timedelta(hours=6)).isoformat():
+            continue
+
+        metrics = api.get_tweet_metrics(tid)
+        if metrics:
+            perf["tweets"][tid] = {
+                "text": tweet.get("text", "")[:100],
+                "posted": tweet.get("date", ""),
+                "likes": metrics.get("likes", 0),
+                "retweets": metrics.get("retweets", 0),
+                "replies": metrics.get("replies", 0),
+                "views": metrics.get("views", "0"),
+                "last_check": datetime.now().isoformat(),
+            }
+            stats["checked"] += 1
+            stats["total_likes"] += metrics.get("likes", 0)
+
+            # Flop detection: >12h old, 0 likes, 0 replies
+            age_hours = 0
+            try:
+                posted = datetime.fromisoformat(tweet.get("date", ""))
+                age_hours = (datetime.now() - posted).total_seconds() / 3600
+            except Exception:
+                pass
+
+            if age_hours > 12 and metrics.get("likes", 0) == 0 and metrics.get("replies", 0) == 0:
+                stats["flops"].append(tid)
+
+    # Clean old entries (>7 days)
+    cutoff = (datetime.now() - timedelta(days=7)).isoformat()
+    perf["tweets"] = {k: v for k, v in perf["tweets"].items() if v.get("posted", "") >= cutoff}
+    _save_performance(perf)
+    return stats
+
+
+def get_best_performing_format(perf: dict) -> str | None:
+    """Analyze which tweet format gets most engagement. Returns hint."""
+    if not perf.get("tweets"):
+        return None
+
+    tweets = list(perf["tweets"].values())
+    if len(tweets) < 5:
+        return None
+
+    # Find which texts got most likes
+    sorted_tweets = sorted(tweets, key=lambda t: t.get("likes", 0), reverse=True)
+    top = sorted_tweets[:3]
+
+    # Check patterns
+    question_count = sum(1 for t in top if "?" in t.get("text", ""))
+    fact_count = sum(1 for t in top if any(w in t.get("text", "").lower() for w in ["280", "timer", "telemetry", "game bar"]))
+
+    if question_count >= 2:
+        return "questions"
+    if fact_count >= 2:
+        return "facts"
+    return None
+
+
+# ─── Conversation continuation ────────────────────────────────────
+
+def continue_conversations(api, log: dict) -> int:
+    """Check if anyone replied to our replies, continue the conversation."""
+    replied_count = 0
+
+    for reply_entry in log.get("replies", [])[-10:]:
+        rid = reply_entry.get("id", "")
+        if not rid:
+            continue
+
+        # Already checked this conversation
+        if api.already_engaged(f"conv_{rid}"):
+            continue
+
+        # Get replies to our reply
+        try:
+            thread_replies = api.get_tweet_replies(rid)
+        except Exception:
+            continue
+
+        for tr in thread_replies[:3]:
+            if _spam(tr["text"]):
+                continue
+            if api.already_engaged(tr["id"]):
+                continue
+
+            # Generate continuation
+            vp = _voice()
+            prompt = (
+                f'someone replied to your comment: "{tr["text"][:150]}"\n\n'
+                f'continue the conversation naturally. be helpful about their specific point. '
+                f'under 180 chars. no quotes.'
+            )
+            try:
+                text = llm.generate(prompt, system=vp).strip().strip('"\'')
+                if text and 10 < len(text) < 280:
+                    new_id = api.create_tweet(text, reply_to=tr["id"])
+                    if new_id:
+                        replied_count += 1
+                        api.mark_engaged(tr["id"])
+                        api.mark_engaged(f"conv_{rid}")
+                        track_action("reply")
+                        print(f"  [convo] to @{tr['user']}: {text[:60]}...")
+                        break
+            except Exception:
+                pass
+
+        time.sleep(random.uniform(5, 15))
+
+    return replied_count
+
+
 # ─── Release checking ────────────────────────────────────────────
 
 def _check_release() -> dict | None:
@@ -449,7 +593,18 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
         # Prefer topics matching today's content type
         matching = [t for t in topics if any(k.lower() in t.lower() for k in kws)]
         topic = random.choice(matching) if matching else random.choice(topics)
-        fmt = random.choice(TWEET_FORMATS)
+
+        # Smart format selection — bias towards formats that perform well
+        perf = _load_performance()
+        best_format = get_best_performing_format(perf)
+        if best_format == "questions":
+            # Bias towards question formats
+            fmt = random.choice([TWEET_FORMATS[1], TWEET_FORMATS[1], TWEET_FORMATS[4]] + TWEET_FORMATS)
+        elif best_format == "facts":
+            fmt = random.choice([TWEET_FORMATS[0], TWEET_FORMATS[2], TWEET_FORMATS[4]] + TWEET_FORMATS)
+        else:
+            fmt = random.choice(TWEET_FORMATS)
+
         prompt = fmt.format(topic=topic, url=url, name=name)
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if len(text) > 280: text = text[:277]
@@ -1187,15 +1342,15 @@ def run_cycle_http() -> dict:
 
     # Activities — more variety, limit-aware
     if is_peak_hour():
-        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions", "quote"]
+        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions", "quote", "conversations", "performance"]
     elif is_dead_hour():
-        activities = ["like", "like"]
+        activities = ["like", "like", "performance"]
     else:
-        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow", "quote"]
+        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow", "quote", "conversations"]
 
-    # If daily limit hit, only do likes and follows
+    # If daily limit hit, only do likes, follows, and performance tracking
     if not api.can_post:
-        activities = ["like", "like", "like", "follow"]
+        activities = ["like", "like", "like", "follow", "performance"]
 
     random.shuffle(activities)
 
@@ -1352,6 +1507,33 @@ def run_cycle_http() -> dict:
                     except Exception:
                         pass
                     time.sleep(random.uniform(3, 8))
+
+            elif activity == "conversations" and api.can_post:
+                try:
+                    conv_count = continue_conversations(api, log)
+                    if conv_count:
+                        stats["replies"] += conv_count
+                        print(f"  [convo] continued {conv_count} conversations")
+                except Exception as exc:
+                    print(f"  [convo] error: {exc}")
+
+            elif activity == "performance":
+                try:
+                    perf_stats = track_tweet_performance(api)
+                    if perf_stats["checked"]:
+                        print(f"  [perf] checked {perf_stats['checked']} tweets, {perf_stats['total_likes']} total likes")
+                    if perf_stats["flops"]:
+                        print(f"  [perf] {len(perf_stats['flops'])} flop tweets detected")
+                        # Auto-delete flops (optional, controlled by config)
+                        if _cfg().get("auto_delete_flops", False):
+                            for flop_id in perf_stats["flops"][:2]:
+                                try:
+                                    if api.delete_tweet(flop_id):
+                                        print(f"  [perf] deleted flop {flop_id}")
+                                except Exception:
+                                    pass
+                except Exception as exc:
+                    print(f"  [perf] error: {exc}")
 
             elif activity == "reply_mentions" and api.can_post:
                 # Reply to people who mentioned us
