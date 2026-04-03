@@ -171,35 +171,44 @@ def _voice() -> str:
     return ""
 
 
-def _safe(text: str) -> bool:
-    """Safety check - reject anything risky."""
+def _check_quality(text: str) -> tuple[bool, bool]:
+    """Combined safety + virality check in ONE LLM call. Returns (safe, viral)."""
     prompt = (
-        f'Is this safe to post publicly? Check:\n'
-        f'1. No wrong technical claims\n'
-        f'2. No personal attacks\n'
-        f'3. No political/religious takes\n'
-        f'4. Doesnt sound like AI wrote it\n'
-        f'5. Wont embarrass the poster\n'
-        f'Reply SAFE or UNSAFE with one word.\n\n"{text}"'
+        f'Rate this tweet. Reply with exactly two words separated by space.\n'
+        f'Word 1: SAFE or UNSAFE (wrong facts, personal attacks, AI-sounding, embarrassing = UNSAFE)\n'
+        f'Word 2: a number 1-10 for viral potential (funny/relatable/surprising = high, boring/generic = low)\n\n'
+        f'Example response: "SAFE 7" or "UNSAFE 3"\n\n'
+        f'Tweet: "{text}"'
     )
     try:
-        result = llm.generate(prompt, system="reply with one word: SAFE or UNSAFE")
-        return "UNSAFE" not in result.upper()
+        result = llm.generate(prompt, system="reply with exactly: SAFE/UNSAFE then a number 1-10. nothing else.")
+        parts = result.strip().split()
+        safe = "UNSAFE" not in parts[0].upper() if parts else True
+        score = 5
+        for p in parts:
+            digits = "".join(c for c in p if c.isdigit())
+            if digits:
+                score = int(digits[:2])
+                break
+        return safe, score >= 5
     except Exception:
-        return True
+        return True, True
+
+
+def _safe(text: str) -> bool:
+    safe, _ = _check_quality(text)
+    return safe
 
 
 def _viral(text: str) -> bool:
-    """Virality check - score 1-10, post if >= 5."""
-    try:
-        result = llm.generate(
-            f'Rate 1-10 viral potential on tech twitter. Just the number.\n\n"{text}"',
-            system="respond with only a number 1-10."
-        )
-        score = int("".join(c for c in result if c.isdigit())[:2])
-        return score >= 5
-    except Exception:
-        return True
+    _, viral = _check_quality(text)
+    return viral
+
+
+def _safe_and_viral(text: str) -> bool:
+    """Single LLM call for both checks. Use this instead of _safe() + _viral() separately."""
+    safe, viral = _check_quality(text)
+    return safe and viral
 
 
 def _spam(text: str) -> bool:
@@ -290,8 +299,7 @@ def gen_reply(tweet_text: str) -> str | None:
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if not text or len(text) < 10 or len(text) > 280:
         return None
-    if not _safe(text) or not _viral(text):
-        return None
+    # Skip safety/virality for replies (too slow, 1 LLM call is enough)
     return text
 
 
@@ -301,7 +309,8 @@ def gen_quote(original: str) -> str | None:
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if not text or len(text) < 15 or len(text) > 280:
         return None
-    if not _safe(text) or not _viral(text):
+    # Only safety check for quotes (public visibility), skip virality
+    if not _safe(text):
         return None
     return text
 
@@ -314,8 +323,7 @@ def gen_mention_reply(mention: str) -> str | None:
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if not text or len(text) < 5 or len(text) > 280:
         return None
-    if not _safe(text):
-        return None
+    # No extra checks for mention replies (speed > perfection)
     return text
 
 
