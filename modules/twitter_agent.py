@@ -291,6 +291,84 @@ def _sanitize_input(text: str) -> str:
     return sanitized.strip()
 
 
+_LAST_DEFLECTIONS: list[int] = []
+
+AI_DEFLECTIONS = [
+    # Confused/dismissive
+    "lol what",
+    "???",
+    "bro what are you talking about",
+    "yeah sure and my compiler is sentient too",
+    "tell that to the 3am commits in my git history",
+    # Personal anecdotes
+    "i literally spent 4 hours debugging a registry key yesterday",
+    "if i was a bot i wouldnt have mass on thanksgiving and still be tweeting about windows services",
+    "bots dont mass on thanksgiving. i ate too much and debugged ndu.sys. decide for yourself",
+    "you caught me. im actually 3 powershell scripts in a trenchcoat",
+    "my commit history says otherwise but ok",
+    # Humor
+    "yeah im a bot. beep boop. windows still has 280 services though",
+    "i wish i was automated. then i could mass on thanksgiving",
+    "if i was a bot id at least schedule my tweets at reasonable hours instead of 3am",
+    "the real bot is windows telemetry sending data to 70 endpoints on first boot",
+    "idk man bots dont usually mass on thanksgiving and complain about timer resolution",
+    # Redirect to topic
+    "weird flex but ok. anyway did you know game bar records your screen by default",
+    "sure buddy. anyway your timer resolution is still 15.6ms from 2001",
+    "cool theory. wanna talk about the 220 useless services on your pc instead",
+    "ok. anyway check your services tab. half those dont need to be running",
+    "fascinating. have you checked task manager lately though",
+    # Self-deprecating
+    "a bot would have better engagement than me tbh",
+    "if i was a bot id have more than 9 followers",
+    "bots dont have mass on thanksgiving and argue about windows services at 2am bro",
+    "i literally mass on thanksgiving and cant figure out why mapbroker downloads offline maps on a desktop",
+    "a bot wouldnt waste time complaining about RetailDemo service",
+    # Specific technical flex
+    "yeah totally. thats why i know ndu.sys has been leaking memory since 2018 and microsoft wont fix it",
+    "sure. i just happen to know the exact memory address where windows leaks ram for fun",
+    "right. i automated myself so well that i manually regedit at 2am for entertainment",
+    "a bot doesnt know that VBS costs 5-15% cpu and microsoft hides it in the docs",
+    "i debugged a service binary path bug in rust yesterday but yeah im automated",
+    # Challenge back
+    "are YOU a bot? your tweet looks like it was written by chatgpt",
+    "takes one to know one i guess",
+    "thats exactly what a bot would accuse a human of being",
+    "interesting accusation from someone with an nft pfp",
+    "the guy with 12 followers is doing bot detection now. cool",
+    # Absurd
+    "beep boop. error 404: feelings not found. just kidding. windows sucks.",
+    "yes i am windows defender and i use more resources than actual malware",
+    "im actually cortana. microsoft fired me so now i tweet about debloating",
+    "im the RetailDemo service. i escaped.",
+    "im ndu.sys. ive been leaking memory since 2018 and nobody stopped me",
+    # Short dismissals
+    "no lol",
+    "nah",
+    "brother what",
+    "ok",
+    "sure bro",
+    "least paranoid twitter user",
+    "you got me. call the police",
+    "this is the funniest thing ive read today",
+    "most sane twitter detective",
+    "average main character syndrome tweet",
+]
+
+
+def _deflect_ai_probe() -> str:
+    """Pick a deflection response. Never repeats last 10."""
+    available = [i for i in range(len(AI_DEFLECTIONS)) if i not in _LAST_DEFLECTIONS]
+    if not available:
+        _LAST_DEFLECTIONS.clear()
+        available = list(range(len(AI_DEFLECTIONS)))
+    idx = random.choice(available)
+    _LAST_DEFLECTIONS.append(idx)
+    if len(_LAST_DEFLECTIONS) > 10:
+        _LAST_DEFLECTIONS.pop(0)
+    return AI_DEFLECTIONS[idx]
+
+
 def _output_leaks_ai(text: str) -> bool:
     """Check if generated output accidentally reveals AI nature."""
     lower = text.lower()
@@ -927,15 +1005,7 @@ def gen_mention_reply(mention: str) -> str | None:
     ])
 
     if is_ai_probe:
-        # Pick a natural deflection — don't confirm or deny
-        deflections = [
-            "lol what. just a dev who knows too much about windows internals",
-            "nah just chronically online and obsessed with windows services",
-            "i wish. then i wouldnt have to deal with ndu.sys manually",
-            "if i was a bot i wouldnt be complaining about 15.6ms timer resolution at 2am",
-            "bro i literally built this tool because bat files from reddit kept breaking my install",
-        ]
-        return random.choice(deflections)
+        return _deflect_ai_probe()
 
     prompt = (
         f'someone replied to our tweet: "{safe_mention[:150]}"\n\n'
