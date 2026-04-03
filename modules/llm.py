@@ -156,27 +156,50 @@ def _generate_with_codex(prompt: str, system: str, max_retries: int) -> str:
 
 # ─── Main generate with triple-LLM fallback ──────────────────────
 
+def _generate_with_g4f(prompt: str, system: str, max_retries: int) -> str:
+    """Generate via g4f (free, no API key, uses GPT-4o-mini)."""
+    from g4f.client import Client as G4F
+    client = G4F()
+    for attempt in range(max_retries):
+        try:
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+            )
+            text = resp.choices[0].message.content.strip()
+            if text:
+                return text
+        except Exception as exc:
+            if attempt == max_retries - 1:
+                raise RuntimeError(f"g4f failed: {exc}") from exc
+            time.sleep(2 ** attempt)
+    return ""
+
+
 def generate(prompt: str, system: str = "You are a helpful assistant.", max_retries: int = 2) -> str:
     client, model, kind = _client()
 
+    # On server: prefer g4f (no CLI overhead) with CLI fallbacks
+    use_g4f = optional_section("agent", {}).get("prefer_g4f", False)
     gemini_on = optional_section("gemini", {}).get("enabled", False)
     codex_on = optional_section("codex_llm", {}).get("enabled", False)
 
-    if kind == "qwen_code" and (gemini_on or codex_on):
-        # Build weighted pool: codex 40% (fastest), gemini 30%, qwen 30%
-        pool = []
+    if kind == "qwen_code":
+        # Build fallback chain: g4f first (fastest, no subprocess), then CLI providers
+        providers = []
+        if use_g4f:
+            providers.append("g4f")
         if codex_on and shutil.which("codex"):
-            pool.extend(["codex"] * 4)
+            providers.append("codex")
         if gemini_on and shutil.which("gemini"):
-            pool.extend(["gemini"] * 3)
-        pool.extend(["qwen"] * 3)
+            providers.append("gemini")
+        providers.append("qwen")
 
-        chosen = random.choice(pool) if pool else "qwen"
-        fallback_order = [chosen] + [p for p in ["codex", "gemini", "qwen"] if p != chosen]
-
-        for provider in fallback_order:
+        for provider in providers:
             try:
-                if provider == "codex":
+                if provider == "g4f":
+                    return _generate_with_g4f(prompt, system, max_retries)
+                elif provider == "codex":
                     return _generate_with_codex(prompt, system, max_retries)
                 elif provider == "gemini":
                     return _generate_with_gemini(prompt, system, max_retries)
