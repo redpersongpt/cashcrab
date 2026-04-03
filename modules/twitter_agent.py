@@ -1622,7 +1622,8 @@ def run_cycle_http() -> dict:
                     time.sleep(random.uniform(2, 6))
 
             elif activity == "reply" and can_reply(log) and api.can_post:
-                # Sort by engagement score — reply to best targets first
+                from modules.canned_replies import get_canned_reply
+
                 ranked = _sort_by_engagement(timeline)
                 for t in ranked:
                     if not can_reply(log) or not api.can_post:
@@ -1632,13 +1633,19 @@ def run_cycle_http() -> dict:
                     if api.is_blacklisted(t.get("user", "")):
                         continue
                     if not _can_reply_to_user(t.get("user", "")):
-                        continue  # already replied to this user today
-                    if not _is_reply_worthy(t["text"]):
                         continue
                     if not t.get("user") or not t.get("id"):
                         continue
 
-                    reply = gen_reply(t["text"])
+                    # Try canned reply first (instant, zero AI, zero detection risk)
+                    reply = get_canned_reply(t["text"])
+                    if reply:
+                        print(f"  [canned] matched: {t['text'][:40]}...")
+                    else:
+                        # Fall back to LLM for Windows-specific tweets
+                        if not _is_reply_worthy(t["text"]):
+                            continue
+                        reply = gen_reply(t["text"])
                     if reply:
                         try:
                             score = _score_tweet(t)
