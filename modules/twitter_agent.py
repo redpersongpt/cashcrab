@@ -402,50 +402,55 @@ def _output_leaks_ai(text: str) -> bool:
 
 
 def _relevant(text: str) -> bool:
-    """Strict check for likes. Only like PERSONAL dev tweets, not brands."""
+    """NUCLEAR STRICT: Only like tweets about Windows PC problems. Nothing else."""
     if len(text) < 20 or _spam(text):
         return False
     lower = text.lower()
 
-    # REJECT brands, promos, announcements
+    # HARD REJECT everything that isnt windows PC talk
     reject = [
-        "crypto", "nft", "giveaway", "follow me", "dm me", "pray", "god",
-        "sports", "football", "basketball", "celebrity", "birthday",
-        "twitter is cool", "follow back", "release notes", "changelog",
-        "google play", "app store", "hiring", "join us", "apply now",
-        "service center", "overseas", "artemis", "nasa",
-        "connectors", "available on every", "create videos",
-        "automate your", "boost your", "try our", "check out our",
-        "introducing", "announcing", "launched", "just dropped",
-        "alternative to", "subscribe", "sign up", "free trial",
-        "tokens launched", "$1", "update:", "december update",
-        "looking for an", "are you looking",
+        "crypto", "nft", "giveaway", "follow me", "dm me", "subscribe",
+        "sign up", "free trial", "download our", "introducing", "announcing",
+        "launched", "just dropped", "check out", "try our", "boost your",
+        "release notes", "changelog", "v0.", "v1.", "v2.",
+        "docker", "kubernetes", "aws", "azure", "gcp", "vercel",
+        "react", "vue", "angular", "next.js", "svelte", "tailwind",
+        "python", "javascript", "typescript", "golang", "java ",
+        "ai agent", "llm", "chatgpt", "copilot", "gemini", "claude",
+        "machine learning", "neural", "training data", "model",
+        "macbook", "iphone", "android", "ios", "apple",
+        "programming language", "best language", "favorite language",
+        "hiring", "job", "interview", "salary", "remote work",
+        "pray", "god", "jesus", "bible", "sports", "football",
+        "food", "recipe", "movie", "netflix", "spotify", "music",
+        "good morning", "gm everyone", "happy birthday",
+        "using ai", "hitting limits", "their uses",
     ]
     if any(r in lower for r in reject):
         return False
 
-    # Must contain FIRST PERSON or QUESTION (personal tweet, not brand)
-    personal_signals = [
-        "i ", "i'm", "i've", "my ", "me ", "we ",
-        "?",  # questions are good
-        "just built", "just made", "just learned", "just finished",
-        "struggling", "finally", "anyone else", "am i the only",
-        "hot take", "unpopular opinion", "be honest", "confession",
-        "what's your", "what do you", "how do you", "which ",
+    # MUST specifically mention windows/PC problem
+    must_have = [
+        "windows", "windows 10", "windows 11",
+        "my pc", "my laptop", "my desktop", "my computer",
+        "debloat", "bloatware", "telemetry",
+        "task manager", "high cpu", "high ram", "high memory",
+        "slow pc", "slow laptop", "slow windows",
+        "windows update", "windows privacy",
+        "game bar", "cortana", "onedrive",
+        "fresh install", "clean install",
+        "background processes", "too many services",
+        "optimize windows", "speed up windows",
     ]
-    has_personal = any(p in lower for p in personal_signals)
+    if not any(m in lower for m in must_have):
+        return False
 
-    # Must be about windows/PC — not general tech
-    windows_kw = [
-        "windows", "pc ", "laptop", "desktop",
-        "cpu", "gpu", "ram", "performance", "optimize",
-        "debloat", "telemetry", "bloat", "services",
-        "task manager", "registry", "boot",
-        "game bar", "update", "slow",
-    ]
-    has_tech = any(t in lower for t in windows_kw)
+    # Must be personal (not brand/news)
+    personal = ["i ", "my ", "?", "why ", "how ", "just ", "finally", "anyone", "hate", "so slow"]
+    if not any(p in lower for p in personal):
+        return False
 
-    return has_personal and has_tech
+    return True
 
 
 def _roastable(text: str) -> bool:
