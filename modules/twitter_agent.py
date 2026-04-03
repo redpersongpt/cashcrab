@@ -630,91 +630,134 @@ def run_cycle(page) -> dict:
 
 
 def _do_engage(page, log) -> int:
-    queries = _searches()
-    if not queries: return 0
-    q = random.choice(queries)
-    print(f"  [engage] {q}")
-    page.goto(f"https://x.com/search?q={q}&src=typed_query&f=live", wait_until="domcontentloaded", timeout=60000)
-    time.sleep(4)
-    _dismiss_overlays(page)
-    articles = page.locator('article[data-testid="tweet"]')
-    count = articles.count()
-    if count < 2: return 0
+    """Like + reply to relevant tweets from HomeTimeline via HTTP API."""
+    from modules.http_twitter import HttpTwitter
+    api = HttpTwitter()
+
+    tweets = api.home_timeline(30)
+    if not tweets:
+        print("  [engage] no timeline tweets")
+        return 0
+
+    print(f"  [engage] {len(tweets)} timeline tweets")
+    liked = 0
     replied = 0
-    for i in range(min(10, count)):
-        if not can_reply(log) and not can_like(log): break
-        art = articles.nth(i)
-        tel = art.locator('[data-testid="tweetText"]').first
-        if tel.count() == 0: continue
-        text = tel.inner_text()
-        if not _relevant(text): continue
+
+    for t in tweets:
+        if not can_like(log) and not can_reply(log):
+            break
+        if not _relevant(t["text"]):
+            continue
+        if _spam(t["text"]):
+            continue
+
+        # Like via HTTP (fast, no Playwright)
         if can_like(log):
             try:
-                _like(page, art)
-                log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "q": q})
-                track_action("like")
-            except Exception: pass
-        if can_reply(log) and random.random() < 0.70:
-            reply = gen_reply(text)
+                if api.like(t["id"]):
+                    log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "tid": t["id"]})
+                    liked += 1
+                    track_action("like")
+                    print(f"  [like] @{t['user']}: {t['text'][:50]}...")
+            except Exception:
+                pass
+            time.sleep(random.uniform(2, 6))
+
+        # Reply via Playwright (HTTP gives 226)
+        if can_reply(log) and random.random() < 0.50 and page:
+            reply = gen_reply(t["text"])
             if reply:
                 try:
                     print(f"  [reply] {reply[:60]}...")
-                    _reply(page, art, reply)
-                    log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": text[:100], "r": reply[:200]})
-                    replied += 1
-                    track_action("reply")
-                except Exception: pass
-        time.sleep(random.uniform(4, 12))
+                    # Navigate to tweet and reply
+                    page.goto(f"https://x.com/i/status/{t['id']}", wait_until="domcontentloaded", timeout=60000)
+                    time.sleep(3)
+                    _dismiss_overlays(page)
+                    reply_box = page.locator('[data-testid="tweetTextarea_0"]').first
+                    if reply_box.count() > 0:
+                        reply_box.click()
+                        time.sleep(0.5)
+                        page.keyboard.type(reply, delay=random.randint(8, 15))
+                        time.sleep(1)
+                        page.locator('[data-testid="tweetButton"]').click()
+                        time.sleep(3)
+                        log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": t["text"][:100], "r": reply[:200]})
+                        replied += 1
+                        track_action("reply")
+                except Exception as exc:
+                    print(f"  [reply] fail: {exc}")
+            time.sleep(random.uniform(5, 15))
+
+    if liked:
+        print(f"  [engage] liked {liked}")
     return replied
 
 
 def _do_mentions(page, log) -> int:
-    print("  [mentions] checking...")
-    page.goto("https://x.com/notifications/mentions", wait_until="domcontentloaded", timeout=60000)
-    time.sleep(4)
-    articles = page.locator('article[data-testid="tweet"]')
+    """Check notifications via HTTP, reply via Playwright."""
+    from modules.http_twitter import HttpTwitter
+    api = HttpTwitter()
+
+    notifs = api.notifications()
+    print(f"  [mentions] {len(notifs)} notifications")
     replied = 0
-    for i in range(min(8, articles.count())):
-        if not can_reply(log): break
-        art = articles.nth(i)
-        tel = art.locator('[data-testid="tweetText"]').first
-        if tel.count() == 0: continue
-        text = tel.inner_text()
-        if _spam(text): continue
-        reply = gen_mention_reply(text)
-        if reply:
+
+    for n in notifs[:8]:
+        if not can_reply(log):
+            break
+        if _spam(n["text"]):
+            continue
+
+        reply = gen_mention_reply(n["text"])
+        if reply and page:
             try:
-                print(f"  [mention] {reply[:60]}...")
-                _reply(page, art, reply)
-                log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": text[:100], "r": reply[:200], "src": "mention"})
-                replied += 1
-                track_action("reply")
-            except Exception: pass
-        time.sleep(random.uniform(8, 18))
+                print(f"  [mention] replying: {reply[:60]}...")
+                page.goto(f"https://x.com/i/status/{n['id']}", wait_until="domcontentloaded", timeout=60000)
+                time.sleep(3)
+                _dismiss_overlays(page)
+                reply_box = page.locator('[data-testid="tweetTextarea_0"]').first
+                if reply_box.count() > 0:
+                    reply_box.click()
+                    time.sleep(0.5)
+                    page.keyboard.type(reply, delay=random.randint(8, 15))
+                    time.sleep(1)
+                    page.locator('[data-testid="tweetButton"]').click()
+                    time.sleep(3)
+                    log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": n["text"][:100], "r": reply[:200], "src": "mention"})
+                    replied += 1
+                    track_action("reply")
+            except Exception as exc:
+                print(f"  [mention] fail: {exc}")
+        time.sleep(random.uniform(8, 15))
+
     return replied
 
 
 def _do_browse(page, log) -> int:
-    print("  [browse] timeline...")
-    page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=60000)
-    time.sleep(4)
-    articles = page.locator('article[data-testid="tweet"]')
+    """Like relevant timeline tweets via HTTP API (fast, no Playwright)."""
+    from modules.http_twitter import HttpTwitter
+    api = HttpTwitter()
+
+    tweets = api.home_timeline(30)
+    print(f"  [browse] {len(tweets)} tweets")
     liked = 0
     kws = _keywords()
-    for i in range(min(20, articles.count())):
-        if not can_like(log): break
-        art = articles.nth(i)
-        tel = art.locator('[data-testid="tweetText"]').first
-        if tel.count() == 0: continue
-        text = tel.inner_text().lower()
-        if any(kw in text for kw in kws):
+
+    for t in tweets:
+        if not can_like(log):
+            break
+        if any(kw in t["text"].lower() for kw in kws):
             try:
-                _like(page, art)
-                log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "src": "tl"})
-                liked += 1
-                track_action("like")
-            except Exception: pass
+                if api.like(t["id"]):
+                    log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "src": "tl"})
+                    liked += 1
+                    track_action("like")
+            except Exception:
+                pass
             time.sleep(random.uniform(2, 5))
+
+    if liked:
+        print(f"  [browse] liked {liked}")
     return liked
 
 
