@@ -170,8 +170,8 @@ class CookieTwitterClient:
             page.goto("https://x.com/compose/post", wait_until="domcontentloaded", timeout=20000)
             time.sleep(2)
 
-        # Type the tweet
-        compose = page.locator('[data-testid="tweetTextarea_0"]')
+        # Type the tweet (use .first because compose page has 2 textareas)
+        compose = page.locator('[data-testid="tweetTextarea_0"]').first
         compose.click()
         time.sleep(0.5)
 
