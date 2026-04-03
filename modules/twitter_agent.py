@@ -819,3 +819,98 @@ def _do_follow(page, log) -> int:
         except Exception:
             pass
     return followed
+
+
+# ─── Hybrid cycle (HTTP reads + Playwright writes) ────────────────
+
+def run_cycle_hybrid(cookies: dict, pw_post_fn) -> dict:
+    """Main cycle for VDS: HTTP for reads, Playwright for writes.
+
+    Args:
+        cookies: dict with ct0 and auth_token
+        pw_post_fn: callable(cookies, text, reply_to_url=None) -> bool
+    """
+    from modules.http_twitter import HttpTwitter
+
+    log = _load_log()
+    stats = {"tweets": 0, "replies": 0, "likes": 0}
+    api = HttpTwitter()
+
+    # Release check
+    new_rel = _new_release(log)
+    if new_rel and can_tweet(log):
+        text = gen_tweet(release_tag=new_rel)
+        if text:
+            print(f"  [release] {text[:60]}...")
+            if pw_post_fn(cookies, text):
+                log.setdefault("tweets", []).append({"date": datetime.now().isoformat(), "text": text[:200], "type": "release"})
+                stats["tweets"] += 1
+                track_action("tweet")
+            time.sleep(random.uniform(5, 15))
+
+    # Build activities
+    if is_peak_hour():
+        activities = ["tweet", "like_timeline", "like_timeline", "reply_timeline", "reply_timeline", "like_timeline"]
+    elif is_dead_hour():
+        activities = ["like_timeline"]
+    else:
+        activities = ["tweet", "like_timeline", "like_timeline", "reply_timeline"]
+
+    random.shuffle(activities)
+
+    for activity in activities:
+        try:
+            if activity == "tweet" and can_tweet(log):
+                text = gen_tweet()
+                if text:
+                    print(f"  [tweet] {text[:60]}...")
+                    if pw_post_fn(cookies, text):
+                        log.setdefault("tweets", []).append({"date": datetime.now().isoformat(), "text": text[:200]})
+                        stats["tweets"] += 1
+                        track_action("tweet")
+
+            elif activity == "like_timeline" and can_like(log):
+                tweets = api.home_timeline(30)
+                kws = _keywords()
+                for t in tweets:
+                    if not can_like(log):
+                        break
+                    if any(kw in t["text"].lower() for kw in kws):
+                        try:
+                            if api.like(t["id"]):
+                                log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "tid": t["id"]})
+                                stats["likes"] += 1
+                                track_action("like")
+                                print(f"  [like] @{t['user']}: {t['text'][:50]}...")
+                        except Exception:
+                            pass
+                        time.sleep(random.uniform(2, 6))
+
+            elif activity == "reply_timeline" and can_reply(log):
+                tweets = api.home_timeline(30)
+                for t in tweets:
+                    if not can_reply(log):
+                        break
+                    if not _relevant(t["text"]) or _spam(t["text"]):
+                        continue
+                    if random.random() > 0.40:
+                        continue
+
+                    reply = gen_reply(t["text"])
+                    if reply:
+                        print(f"  [reply] to @{t['user']}: {reply[:60]}...")
+                        tweet_url = f"https://x.com/i/status/{t['id']}"
+                        if pw_post_fn(cookies, reply, reply_to_url=tweet_url):
+                            log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": t["text"][:100], "r": reply[:200]})
+                            stats["replies"] += 1
+                            track_action("reply")
+                        time.sleep(random.uniform(10, 25))
+                        break  # max 1 reply per sub-cycle
+
+        except Exception as exc:
+            print(f"  [{activity}] error: {exc}")
+
+        time.sleep(random.uniform(5, 15))
+
+    _save_log(log)
+    return stats
