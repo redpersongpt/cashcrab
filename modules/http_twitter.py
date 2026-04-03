@@ -1,19 +1,14 @@
-"""HTTP-based Twitter client for VDS (no Playwright needed for reads).
+"""Full HTTP Twitter client using curl_cffi (Chrome TLS impersonation).
 
-Uses cookie auth + GraphQL API for:
-- HomeTimeline (read tweets)
-- FavoriteTweet (like)
-- Viewer (get own profile)
-- Notifications
-
-CreateTweet and Reply require Playwright (anti-bot error 226 via HTTP).
+No Playwright needed. Bypasses Cloudflare + Error 226.
+Uses cookie auth + Chrome TLS fingerprint via curl_cffi.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import httpx
+from curl_cffi.requests import Session
 
 from modules.config import ROOT
 
@@ -21,13 +16,8 @@ COOKIES_PATH = ROOT / "tokens" / "twitter_cookies.json"
 BEARER = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs=1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
 
 FEATURES = {
-    "responsive_web_graphql_exclude_directive_enabled": True,
-    "verified_phone_label_enabled": False,
-    "responsive_web_graphql_timeline_navigation_enabled": True,
-    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
-    "c9s_tweet_anatomy_moderator_badge_enabled": True,
     "communities_web_enable_tweet_community_results_fetch": True,
-    "articles_preview_enabled": True,
+    "c9s_tweet_anatomy_moderator_badge_enabled": True,
     "responsive_web_edit_tweet_api_enabled": True,
     "graphql_is_translatable_rweb_tweet_is_translatable_enabled": True,
     "view_counts_everywhere_api_enabled": True,
@@ -37,15 +27,19 @@ FEATURES = {
     "creator_subscriptions_quote_tweet_preview_enabled": False,
     "longform_notetweets_rich_text_read_enabled": True,
     "longform_notetweets_inline_media_enabled": True,
+    "articles_preview_enabled": True,
     "rweb_video_timestamps_enabled": True,
     "rweb_tipjar_consumption_enabled": True,
+    "responsive_web_graphql_exclude_directive_enabled": True,
+    "verified_phone_label_enabled": False,
     "freedom_of_speech_not_reach_fetch_enabled": True,
     "standardized_nudges_misinfo": True,
     "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True,
+    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
+    "responsive_web_graphql_timeline_navigation_enabled": True,
     "responsive_web_enhance_cards_enabled": False,
 }
 
-# Query IDs (update if Twitter changes them)
 QID = {
     "HomeTimeline": "CjPlrHqm60wc8h8z6QNKyA",
     "FavoriteTweet": "lI07N6Otwv1PhnEgXILM7A",
@@ -59,24 +53,29 @@ class HttpTwitter:
         cookies = json.loads(COOKIES_PATH.read_text())
         self._ct0 = cookies["ct0"]
         self._at = cookies["auth_token"]
-        self._http = httpx.Client(timeout=15, headers={
+        self._session = Session(impersonate="chrome120")
+        self._session.cookies.set("ct0", self._ct0, domain=".x.com")
+        self._session.cookies.set("auth_token", self._at, domain=".x.com")
+
+    def _headers(self) -> dict:
+        return {
             "authorization": f"Bearer {BEARER}",
             "x-csrf-token": self._ct0,
             "x-twitter-auth-type": "OAuth2Session",
             "x-twitter-active-user": "yes",
             "content-type": "application/json",
-            "cookie": f"ct0={self._ct0}; auth_token={self._at}",
-            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "referer": "https://x.com/",
-        })
+            "origin": "https://x.com",
+        }
 
     def get_me(self) -> dict:
-        r = self._http.get(
+        r = self._session.get(
             f"https://x.com/i/api/graphql/{QID['Viewer']}/Viewer",
             params={
                 "variables": json.dumps({"withCommunitiesMemberships": False}),
                 "features": json.dumps(FEATURES),
             },
+            headers=self._headers(),
         )
         if r.status_code != 200:
             return {}
@@ -91,27 +90,66 @@ class HttpTwitter:
         }
 
     def home_timeline(self, count: int = 20) -> list[dict]:
-        r = self._http.get(
+        r = self._session.get(
             f"https://x.com/i/api/graphql/{QID['HomeTimeline']}/HomeTimeline",
             params={
                 "variables": json.dumps({"count": count, "includePromotedContent": False, "latestControlAvailable": True}),
                 "features": json.dumps(FEATURES),
             },
+            headers=self._headers(),
         )
         if r.status_code != 200:
             return []
         return self._parse_timeline(r.json(), ["data", "home", "home_timeline_urt", "instructions"])
 
     def like(self, tweet_id: str) -> bool:
-        r = self._http.post(
+        r = self._session.post(
             f"https://x.com/i/api/graphql/{QID['FavoriteTweet']}/FavoriteTweet",
             json={"variables": {"tweet_id": tweet_id}, "queryId": QID["FavoriteTweet"]},
+            headers=self._headers(),
         )
         return r.status_code == 200 and "Done" in r.text
 
+    def create_tweet(self, text: str, reply_to: str | None = None) -> str | None:
+        """Post a tweet or reply. Returns tweet ID or None."""
+        variables = {
+            "tweet_text": text,
+            "dark_request": False,
+            "media": {"media_entities": [], "possibly_sensitive": False},
+            "semantic_annotation_ids": [],
+        }
+        if reply_to:
+            variables["reply"] = {
+                "in_reply_to_tweet_id": reply_to,
+                "exclude_reply_user_ids": [],
+            }
+
+        r = self._session.post(
+            f"https://x.com/i/api/graphql/{QID['CreateTweet']}/CreateTweet",
+            json={"variables": variables, "features": FEATURES, "queryId": QID["CreateTweet"]},
+            headers=self._headers(),
+        )
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        if "errors" in data:
+            err = data["errors"][0].get("message", "")
+            raise RuntimeError(f"CreateTweet: {err[:150]}")
+
+        return (
+            data.get("data", {})
+            .get("create_tweet", {})
+            .get("tweet_results", {})
+            .get("result", {})
+            .get("rest_id", "")
+        ) or None
+
     def notifications(self) -> list[dict]:
-        """Get recent notifications with tweet data."""
-        r = self._http.get("https://x.com/i/api/2/notifications/all.json")
+        r = self._session.get(
+            "https://x.com/i/api/2/notifications/all.json",
+            headers=self._headers(),
+        )
         if r.status_code != 200 or not r.content:
             return []
         data = r.json()
@@ -136,7 +174,6 @@ class HttpTwitter:
             obj = obj.get(key, {}) if isinstance(obj, dict) else {}
         if not isinstance(obj, list):
             return []
-
         tweets = []
         for inst in obj:
             for entry in inst.get("entries", []):

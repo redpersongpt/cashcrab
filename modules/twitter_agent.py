@@ -821,6 +821,109 @@ def _do_follow(page, log) -> int:
     return followed
 
 
+# ─── Pure HTTP cycle (no Playwright) ──────────────────────────────
+
+def run_cycle_http() -> dict:
+    """Full cycle using only HTTP API (curl_cffi). No browser needed."""
+    from modules.http_twitter import HttpTwitter
+
+    log = _load_log()
+    stats = {"tweets": 0, "replies": 0, "likes": 0}
+    api = HttpTwitter()
+
+    # Release check
+    new_rel = _new_release(log)
+    if new_rel and can_tweet(log):
+        text = gen_tweet(release_tag=new_rel)
+        if text:
+            try:
+                print(f"  [release] {text[:60]}...")
+                tid = api.create_tweet(text)
+                if tid:
+                    log.setdefault("tweets", []).append({"date": datetime.now().isoformat(), "text": text[:200], "type": "release", "id": tid})
+                    stats["tweets"] += 1
+                    track_action("tweet")
+                    print(f"  [release] POSTED {tid}")
+            except Exception as exc:
+                print(f"  [release] error: {exc}")
+            time.sleep(random.uniform(5, 15))
+
+    # Activities
+    if is_peak_hour():
+        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like"]
+    elif is_dead_hour():
+        activities = ["like"]
+    else:
+        activities = ["tweet", "like", "like", "reply", "reply"]
+
+    random.shuffle(activities)
+
+    for activity in activities:
+        try:
+            if activity == "tweet" and can_tweet(log):
+                text = gen_tweet()
+                if text:
+                    print(f"  [tweet] {text[:60]}...")
+                    tid = api.create_tweet(text)
+                    if tid:
+                        log.setdefault("tweets", []).append({"date": datetime.now().isoformat(), "text": text[:200], "id": tid})
+                        stats["tweets"] += 1
+                        track_action("tweet")
+                        print(f"  [tweet] POSTED {tid}")
+
+            elif activity == "like" and can_like(log):
+                tweets = api.home_timeline(30)
+                kws = _keywords()
+                for t in tweets:
+                    if not can_like(log):
+                        break
+                    if any(kw in t["text"].lower() for kw in kws):
+                        try:
+                            if api.like(t["id"]):
+                                log.setdefault("likes", []).append({"date": datetime.now().isoformat(), "tid": t["id"]})
+                                stats["likes"] += 1
+                                track_action("like")
+                                print(f"  [like] @{t['user']}: {t['text'][:50]}...")
+                        except Exception:
+                            pass
+                        time.sleep(random.uniform(2, 6))
+
+            elif activity == "reply" and can_reply(log):
+                tweets = api.home_timeline(30)
+                for t in tweets:
+                    if not can_reply(log):
+                        break
+                    if not _relevant(t["text"]) or _spam(t["text"]):
+                        continue
+                    if not t.get("user") or not t.get("id"):
+                        continue
+                    if random.random() > 0.50:
+                        continue
+
+                    reply = gen_reply(t["text"])
+                    if reply:
+                        try:
+                            print(f"  [reply] to @{t['user']}: {reply[:60]}...")
+                            rid = api.create_tweet(reply, reply_to=t["id"])
+                            if rid:
+                                log.setdefault("replies", []).append({"date": datetime.now().isoformat(), "to": t["text"][:100], "r": reply[:200], "user": t["user"], "id": rid})
+                                stats["replies"] += 1
+                                track_action("reply")
+                                print(f"  [reply] POSTED {rid}")
+                        except Exception as exc:
+                            print(f"  [reply] error: {exc}")
+                        time.sleep(random.uniform(10, 25))
+                        break
+
+        except Exception as exc:
+            print(f"  [{activity}] error: {exc}")
+
+        time.sleep(random.uniform(5, 15))
+
+    _save_log(log)
+    return stats
+
+
 # ─── Hybrid cycle (HTTP reads + Playwright writes) ────────────────
 
 def run_cycle_hybrid(cookies: dict, pw_post_fn) -> dict:
