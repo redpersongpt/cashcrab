@@ -183,8 +183,10 @@ def _check_quality(text: str) -> tuple[bool, bool]:
     )
     try:
         result = llm.generate(prompt, system="reply with exactly: SAFE/UNSAFE then a number 1-10. nothing else.")
-        parts = result.strip().split()
-        safe = "UNSAFE" not in parts[0].upper() if parts else False
+        parts = result.strip().upper().split()
+        # Check first word explicitly: must be exactly "SAFE" not just not-containing "UNSAFE"
+        first = parts[0] if parts else ""
+        safe = first == "SAFE"
         score = 5
         for p in parts:
             digits = "".join(c for c in p if c.isdigit())
@@ -372,8 +374,8 @@ def _check_release() -> dict | None:
         except Exception:
             pass
     try:
-        import httpx
-        r = httpx.get(f"https://api.github.com/repos/{repo}/releases/latest", timeout=10)
+        import requests
+        r = requests.get(f"https://api.github.com/repos/{repo}/releases/latest", timeout=10)
         if r.status_code == 200:
             d = r.json()
             rel = {"tag": d.get("tag_name", ""), "name": d.get("name", ""),
@@ -403,7 +405,7 @@ CONTENT_CALENDAR = {
     1: "telemetry",    # Tuesday: telemetry/privacy
     2: "performance",  # Wednesday: performance tips
     3: "services",     # Thursday: more services
-    4: "product",      # Friday: oudenOS features
+    4: "product",      # Friday: product features
     5: "telemetry",    # Saturday: privacy
     6: "performance",  # Sunday: performance
 }
@@ -621,8 +623,9 @@ def gen_quote(original: str) -> str | None:
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if not text or len(text) < 15 or len(text) > 280:
         return None
-    # Only safety check for quotes (public visibility), skip virality
-    if not _safe(text):
+    # Safety check for quotes (public visibility)
+    safe, _ = _check_quality(text)
+    if not safe:
         return None
     return text
 
@@ -635,7 +638,10 @@ def gen_mention_reply(mention: str) -> str | None:
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if not text or len(text) < 5 or len(text) > 280:
         return None
-    # No extra checks for mention replies (speed > perfection)
+    # Safety check — mention replies are public
+    safe, _ = _check_quality(text)
+    if not safe:
+        return None
     return text
 
 
@@ -1278,7 +1284,7 @@ def run_cycle_http() -> dict:
                         time.sleep(random.uniform(10, 25))
                         break
 
-            elif activity == "quote" and api.can_post:
+            elif activity == "quote" and can_quote(log) and api.can_post:
                 ranked = _sort_by_engagement(timeline)
                 for t in ranked:
                     if api.already_engaged(t["id"]):
@@ -1286,13 +1292,18 @@ def run_cycle_http() -> dict:
                     if not _quotable(t["text"]):
                         continue
                     if t.get("likes", 0) < 5:
-                        continue  # only quote tweets with some traction
+                        continue
                     comment = gen_quote(t["text"])
                     if comment:
                         try:
                             print(f"  [quote] @{t['user']}: {comment[:60]}...")
                             qid = api.quote_tweet(t["id"], comment)
                             if qid:
+                                log.setdefault("quotes", []).append({
+                                    "date": datetime.now().isoformat(),
+                                    "orig": t["text"][:100], "comment": comment[:200],
+                                    "user": t.get("user", ""), "id": qid,
+                                })
                                 stats["quotes"] = stats.get("quotes", 0) + 1
                                 track_action("quote")
                                 print(f"  [quote] POSTED {qid}")

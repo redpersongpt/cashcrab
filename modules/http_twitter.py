@@ -273,7 +273,7 @@ class HttpTwitter:
             return None
         variables = {
             "tweet_text": comment,
-            "attachment_url": f"https://x.com/i/status/{tweet_id}",
+            "attachment_url": f"https://twitter.com/i/status/{tweet_id}",
             "dark_request": False,
             "media": {"media_entities": [], "possibly_sensitive": False},
             "semantic_annotation_ids": [],
@@ -305,8 +305,8 @@ class HttpTwitter:
         if not webhook_url:
             return
         try:
-            import httpx
-            httpx.post(webhook_url, json={"content": text}, timeout=5)
+            import requests
+            requests.post(webhook_url, json={"content": text}, timeout=5)
         except Exception:
             pass
 
