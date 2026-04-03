@@ -220,9 +220,16 @@ def _spam(text: str) -> bool:
 
 
 def _relevant(text: str) -> bool:
+    """Check if tweet is about dev/tech topics we care about."""
     if len(text) < 20 or _spam(text):
         return False
-    return any(kw in text.lower() for kw in _keywords())
+    lower = text.lower()
+    # Reject non-tech topics even if they contain a keyword
+    reject = ["crypto", "nft", "giveaway", "follow me", "dm me", "pray", "god",
+              "sports", "football", "basketball", "celebrity", "birthday"]
+    if any(r in lower for r in reject):
+        return False
+    return any(kw in lower for kw in _keywords())
 
 
 def _roastable(text: str) -> bool:
@@ -290,54 +297,97 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
     return text
 
 
-def gen_reply(tweet_text: str) -> str | None:
-    vp, url, name = _voice(), _url(), _product()
+def _is_reply_worthy(tweet_text: str) -> bool:
+    """Strict check: is this tweet something we should reply to as a dev?"""
+    # Hard reject topics we should NEVER reply to
+    reject_topics = [
+        "crypto", "nft", "airdrop", "giveaway", "elon", "trump", "biden",
+        "sports", "football", "basketball", "celebrity", "kardashian",
+        "follow me", "check my", "dm me", "subscribe", "onlyfans",
+        "good morning", "gm everyone", "happy birthday", "rip ",
+        "pray for", "god is", "jesus", "allah", "bible",
+    ]
+    lower = tweet_text.lower()
+    if any(r in lower for r in reject_topics):
+        return False
 
-    # STEP 1: Check if this tweet is ACTUALLY worth replying to
-    # Must be about Windows, PC optimization, debloat, or related topic
-    # NOT just any tweet that happens to contain "windows" or "microsoft"
-    relevance_prompt = (
-        f'Is this tweet about Windows PC problems, optimization, debloat, performance, '
-        f'telemetry, bloatware, or system tweaks? Not just mentioning Microsoft/Windows in passing.\n\n'
-        f'Tweet: "{tweet_text}"\n\n'
-        f'Reply YES or NO. One word only.'
+    # Must be about dev/tech/windows/PC topics
+    good_topics = [
+        "code", "coding", "programming", "developer", "dev ",
+        "javascript", "typescript", "python", "rust", "golang", "react",
+        "windows", "linux", "macos", "ubuntu",
+        "pc", "laptop", "desktop", "setup", "monitor",
+        "cpu", "gpu", "ram", "ssd", "nvme",
+        "optimize", "performance", "slow", "bloat", "debloat",
+        "vscode", "terminal", "cli", "git", "docker",
+        "framework", "library", "api", "database",
+        "startup", "saas", "open source", "github",
+    ]
+    return any(g in lower for g in good_topics)
+
+
+def gen_reply(tweet_text: str) -> str | None:
+    vp = _voice()
+
+    # GATE 1: Is this tweet about dev/tech/windows?
+    if not _is_reply_worthy(tweet_text):
+        return None
+
+    # GATE 2: LLM relevance check - is this a tweet we can add value to?
+    check_prompt = (
+        f'Can a developer who knows Windows internals and programming '
+        f'add genuine value to this conversation? Not by promoting a product, '
+        f'but by sharing knowledge or opinion?\n\n'
+        f'Tweet: "{tweet_text[:200]}"\n\nYES or NO only.'
     )
     try:
-        check = llm.generate(relevance_prompt, system="reply YES or NO only")
+        check = llm.generate(check_prompt, system="reply YES or NO. one word.")
         if "NO" in check.upper():
             return None
     except Exception:
-        pass
+        return None
 
-    # STEP 2: Generate reply
-    if _roastable(tweet_text):
+    # GATE 3: Is this specifically about Windows optimization? (determines if we can mention product)
+    is_windows_help = any(w in tweet_text.lower() for w in [
+        "debloat", "optimize windows", "windows slow", "windows bloat",
+        "remove bloatware", "windows services", "windows telemetry",
+        "clean windows", "speed up windows", "windows optimization",
+    ])
+
+    # Generate reply
+    if is_windows_help:
         prompt = (
-            f'someone tweeted: "{tweet_text}"\n\n'
-            f'roast them with REAL FACTS. be funny and specific to what they said. '
-            f'do NOT mention {name} or any product. just roast. under 200 chars. just the reply.'
+            f'someone needs help with windows: "{tweet_text[:200]}"\n\n'
+            f'give a specific helpful tip. you can casually mention oudenOS (ouden.cc) '
+            f'as one option but give real advice first. under 200 chars.'
+        )
+    elif _roastable(tweet_text):
+        prompt = (
+            f'someone tweeted a bad take: "{tweet_text[:200]}"\n\n'
+            f'roast them with facts. be funny. do NOT mention any product. under 180 chars.'
         )
     else:
         prompt = (
-            f'someone tweeted: "{tweet_text}"\n\n'
-            f'reply naturally about the SPECIFIC thing they said. be helpful or funny. '
-            f'ONLY mention {name} ({url}) if the tweet is specifically asking for a tool recommendation. '
-            f'most of the time just reply without promoting anything. '
-            f'DO NOT force {name} into every reply. under 200 chars. just the reply.'
+            f'someone tweeted: "{tweet_text[:200]}"\n\n'
+            f'reply to what THEY said. be specific to their point. '
+            f'do NOT mention oudenOS or any product. just be a helpful dev. under 180 chars.'
         )
+
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if not text or len(text) < 10 or len(text) > 280:
         return None
 
-    # STEP 3: Reject template-sounding replies
-    bad_patterns = [
-        "kills 220", "kills 280", "blocks 70", "280 services",
-        "oudenOS does", "oudenOS kills", "oudenOS blocks",
-        "github.com/redpersongpt", "ouden.cc",
+    # GATE 4: Hard reject if product spam leaked through
+    spam_patterns = [
+        "kills 220", "kills 280", "blocks 70", "280 services by default",
+        "github.com/redpersongpt", "oudenOS kills", "oudenOS blocks",
     ]
-    # If reply mentions product in EVERY reply, it's spam. Only allow 1 in 4 to mention it.
-    if any(p.lower() in text.lower() for p in bad_patterns):
-        if random.random() > 0.25:  # 75% chance to reject product-heavy replies
-            return None
+    if any(p.lower() in text.lower() for p in spam_patterns):
+        return None
+
+    # If oudenOS is mentioned but tweet wasn't about windows help, reject
+    if not is_windows_help and ("oudenOS" in text or "ouden.cc" in text):
+        return None
 
     return text
 
