@@ -500,6 +500,35 @@ class HttpTwitter:
         except Exception:
             return {}
 
+    def search_via_ddg(self, query: str, max_results: int = 5) -> list[str]:
+        """Search Twitter via DuckDuckGo. Returns tweet IDs."""
+        try:
+            from curl_cffi.requests import Session as DdgSession
+            from bs4 import BeautifulSoup
+            import re
+
+            ddg = DdgSession(impersonate="chrome131")
+            r = ddg.get("https://html.duckduckgo.com/html/", params={
+                "q": f"site:x.com {query}",
+            }, timeout=10)
+
+            if r.status_code != 200:
+                return []
+
+            soup = BeautifulSoup(r.text, "html.parser")
+            results = soup.find_all("a", class_="result__a")
+            tweet_ids = []
+            for a in results[:max_results * 2]:
+                href = a.get("href", "")
+                match = re.search(r"/status/(\d+)", href)
+                if match:
+                    tweet_ids.append(match.group(1))
+                    if len(tweet_ids) >= max_results:
+                        break
+            return tweet_ids
+        except Exception:
+            return []
+
     def _parse_timeline(self, data: dict, path: list[str]) -> list[dict]:
         obj = data
         for key in path:

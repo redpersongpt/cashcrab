@@ -1557,11 +1557,11 @@ def run_cycle_http() -> dict:
 
     # Activities — more variety, limit-aware
     if is_peak_hour():
-        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions", "quote", "conversations", "performance", "influencer_replies"]
+        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions", "quote", "conversations", "performance", "influencer_replies", "search_reply"]
     elif is_dead_hour():
         activities = ["like", "like", "performance"]
     else:
-        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow", "quote", "conversations", "influencer_replies"]
+        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow", "quote", "conversations", "influencer_replies", "search_reply"]
 
     # If daily limit hit, only do likes, follows, and performance tracking
     if not api.can_post:
@@ -1761,6 +1761,67 @@ def run_cycle_http() -> dict:
                                     pass
                 except Exception as exc:
                     print(f"  [perf] error: {exc}")
+
+            elif activity == "search_reply" and api.can_post:
+                # Search for Windows problem tweets via DuckDuckGo, reply to their replies
+                search_queries = [
+                    "windows slow debloat 2026",
+                    "windows bloatware remove",
+                    "windows optimization tool",
+                    "debloat windows 11",
+                    "windows telemetry privacy",
+                    "windows too many services",
+                    "windows high cpu idle",
+                    "best debloat tool windows",
+                ]
+                query = random.choice(search_queries)
+                try:
+                    tweet_ids = api.search_via_ddg(query, max_results=3)
+                    if tweet_ids:
+                        print(f"  [search] found {len(tweet_ids)} tweets for '{query}'")
+                        for tid in tweet_ids:
+                            if not can_reply(log) or not api.can_post:
+                                break
+                            if api.already_engaged(f"search_{tid}"):
+                                continue
+                            api.mark_engaged(f"search_{tid}")
+
+                            # Get replies to this tweet
+                            replies = api.get_tweet_replies(tid)
+                            for r in replies[:5]:
+                                if not can_reply(log) or not api.can_post:
+                                    break
+                                if api.already_engaged(r["id"]):
+                                    continue
+                                if not _is_reply_worthy(r["text"]):
+                                    continue
+                                if not _can_reply_to_user(r.get("user", "")):
+                                    continue
+
+                                our_reply = gen_reply(r["text"])
+                                if our_reply:
+                                    print(f"  [search] replying to @{r['user']}: {our_reply[:50]}...")
+                                    rid = api.create_tweet(our_reply, reply_to=r["id"])
+                                    if rid:
+                                        log.setdefault("replies", []).append({
+                                            "date": datetime.now().isoformat(),
+                                            "to": r["text"][:100],
+                                            "r": our_reply[:200],
+                                            "user": r["user"],
+                                            "source": "search",
+                                        })
+                                        stats["replies"] += 1
+                                        track_action("reply")
+                                        api.mark_engaged(r["id"])
+                                        _mark_replied_user(r["user"])
+                                        print(f"  [search] POSTED {rid}")
+                                    time.sleep(random.uniform(15, 30))
+                                    break
+                            break  # max 1 search tweet per cycle
+                    else:
+                        print(f"  [search] no results for '{query}'")
+                except Exception as exc:
+                    print(f"  [search] error: {exc}")
 
             elif activity == "influencer_replies" and api.can_post:
                 # Watch influencer timelines for people with Windows problems
