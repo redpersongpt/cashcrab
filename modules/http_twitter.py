@@ -72,7 +72,7 @@ class HttpTwitter:
         cookies = json.loads(COOKIES_PATH.read_text())
         self._ct0 = cookies["ct0"]
         self._at = cookies["auth_token"]
-        self._session = Session(impersonate="chrome120")
+        self._session = Session(impersonate="chrome131")
         self._session.cookies.set("ct0", self._ct0, domain=".x.com")
         self._session.cookies.set("auth_token", self._at, domain=".x.com")
         self._daily_limit_hit = False
@@ -244,8 +244,15 @@ class HttpTwitter:
                 print("  [LIMIT] Daily tweet limit reached. Switching to like-only mode.")
                 return None
             if code == 226 or "automated" in err.lower():
+                if max_retries > 0:
+                    import time
+                    wait = 30
+                    print(f"  [226] Anti-bot triggered. Waiting {wait}s...")
+                    time.sleep(wait)
+                    return self.create_tweet(text, reply_to, max_retries - 1)
+                # After retries exhausted, switch to like-only for this cycle
                 self._daily_limit_hit = True
-                print("  [226] Anti-bot detected. Switching to like-only mode for this cycle.")
+                print("  [226] Anti-bot persistent. Like-only mode.")
                 return None
             raise RuntimeError(f"CreateTweet: {err[:150]}")
 
