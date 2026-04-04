@@ -243,13 +243,10 @@ class HttpTwitter:
                 self._daily_limit_hit = True
                 print("  [LIMIT] Daily tweet limit reached. Switching to like-only mode.")
                 return None
-            if code == 226 and max_retries > 0:
-                # Transient anti-bot — exponential backoff retry
-                wait = (3 - max_retries) * 15 + 10  # 10s, 25s
-                print(f"  [226] Anti-bot triggered. Waiting {wait}s and retrying...")
-                import time
-                time.sleep(wait)
-                return self.create_tweet(text, reply_to, max_retries - 1)
+            if code == 226 or "automated" in err.lower():
+                self._daily_limit_hit = True
+                print("  [226] Anti-bot detected. Switching to like-only mode for this cycle.")
+                return None
             raise RuntimeError(f"CreateTweet: {err[:150]}")
 
         tweet_id = (

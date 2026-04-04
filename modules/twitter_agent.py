@@ -402,51 +402,40 @@ def _output_leaks_ai(text: str) -> bool:
 
 
 def _relevant(text: str) -> bool:
-    """NUCLEAR STRICT: Only like tweets about Windows PC problems. Nothing else."""
+    """Like filter — broader than reply filter but still Windows/PC focused."""
     if len(text) < 20 or _spam(text):
         return False
     lower = text.lower()
 
-    # HARD REJECT everything that isnt windows PC talk
+    # REJECT obvious non-tech
     reject = [
         "crypto", "nft", "giveaway", "follow me", "dm me", "subscribe",
-        "sign up", "free trial", "download our", "introducing", "announcing",
-        "launched", "just dropped", "check out", "try our", "boost your",
-        "release notes", "changelog", "v0.", "v1.", "v2.",
-        "docker", "kubernetes", "aws", "azure", "gcp", "vercel",
-        "react", "vue", "angular", "next.js", "svelte", "tailwind",
-        "python", "javascript", "typescript", "golang", "java ",
-        "ai agent", "llm", "chatgpt", "copilot", "gemini", "claude",
-        "machine learning", "neural", "training data", "model",
-        "macbook", "iphone", "android", "ios", "apple",
-        "programming language", "best language", "favorite language",
-        "hiring", "job", "interview", "salary", "remote work",
+        "download our", "introducing our", "try our", "boost your",
         "pray", "god", "jesus", "bible", "sports", "football",
-        "food", "recipe", "movie", "netflix", "spotify", "music",
+        "food", "recipe", "movie", "netflix", "spotify",
         "good morning", "gm everyone", "happy birthday",
-        "using ai", "hitting limits", "their uses",
+        "their uses", "hitting limits",
     ]
     if any(r in lower for r in reject):
         return False
 
-    # MUST specifically mention windows/PC problem
-    must_have = [
-        "windows", "windows 10", "windows 11",
-        "my pc", "my laptop", "my desktop", "my computer",
-        "debloat", "bloatware", "telemetry",
-        "task manager", "high cpu", "high ram", "high memory",
-        "slow pc", "slow laptop", "slow windows",
-        "windows update", "windows privacy",
-        "game bar", "cortana", "onedrive",
-        "fresh install", "clean install",
-        "background processes", "too many services",
-        "optimize windows", "speed up windows",
+    # Like anything related to: windows, PC, hardware, dev tools, open source, coding
+    like_worthy = [
+        "windows", "pc ", "laptop", "desktop", "computer",
+        "debloat", "bloatware", "telemetry", "privacy",
+        "task manager", "cpu", "gpu", "ram", "ssd", "nvme",
+        "performance", "optimize", "slow", "fast",
+        "game bar", "cortana", "onedrive", "registry",
+        "coding", "code", "programming", "developer", "built",
+        "open source", "github", "rust ", "terminal",
+        "setup", "monitor", "keyboard", "mechanical",
+        "linux", "wsl", "dual boot",
     ]
-    if not any(m in lower for m in must_have):
+    if not any(lw in lower for lw in like_worthy):
         return False
 
-    # Must be personal (not brand/news)
-    personal = ["i ", "my ", "?", "why ", "how ", "just ", "finally", "anyone", "hate", "so slow"]
+    # Must look like a real person's tweet
+    personal = ["i ", "i'm", "my ", "?", "why ", "how ", "just ", "finally", "anyone", "hate", "love"]
     if not any(p in lower for p in personal):
         return False
 
