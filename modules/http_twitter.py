@@ -76,6 +76,7 @@ class HttpTwitter:
         self._session.cookies.set("ct0", self._ct0, domain=".x.com")
         self._session.cookies.set("auth_token", self._at, domain=".x.com")
         self._daily_limit_hit = False
+        self._consecutive_fails = 0
         self._engaged_ids: dict[str, bool] = self._load_engaged()
         self._blacklist: set[str] = self._load_blacklist()
 
@@ -203,8 +204,8 @@ class HttpTwitter:
             pass
         return False
 
-    def create_tweet(self, text: str, reply_to: str | None = None, max_retries: int = 1, media_id: str | None = None) -> str | None:
-        """Post a tweet or reply. Returns tweet ID or None. Retries on transient 226."""
+    def create_tweet(self, text: str, reply_to: str | None = None, media_id: str | None = None) -> str | None:
+        """Post a tweet. ZERO retries. One shot. If fails, skip."""
         if self._daily_limit_hit:
             return None
 
@@ -224,42 +225,52 @@ class HttpTwitter:
                 "exclude_reply_user_ids": [],
             }
 
-        r = self._session.post(
-            f"https://x.com/i/api/graphql/{QID['CreateTweet']}/CreateTweet",
-            json={"variables": variables, "features": FEATURES, "queryId": QID["CreateTweet"]},
-            headers=self._headers(),
-        )
-        self._refresh_ct0(r)
+        try:
+            r = self._session.post(
+                f"https://x.com/i/api/graphql/{QID['CreateTweet']}/CreateTweet",
+                json={"variables": variables, "features": FEATURES, "queryId": QID["CreateTweet"]},
+                headers=self._headers(),
+            )
+            self._refresh_ct0(r)
+        except Exception as exc:
+            print(f"  [create_tweet] network error: {exc}")
+            return None
 
         if r.status_code != 200:
-            print(f"  [create_tweet] HTTP {r.status_code}: {r.text[:150]}")
+            print(f"  [create_tweet] HTTP {r.status_code}")
+            self._consecutive_fails += 1
+            if self._consecutive_fails >= 2:
+                self._daily_limit_hit = True
+                print(f"  [COOLDOWN] 2 consecutive fails. Pausing tweets until next cycle.")
             return None
 
         try:
             data = r.json()
         except Exception:
-            print(f"  [create_tweet] JSON parse failed, body={r.text[:100]}")
+            print(f"  [create_tweet] invalid JSON response")
             return None
 
         if "errors" in data:
             errors = data.get("errors", [{}])
             err = errors[0].get("message", "") if errors else ""
             code = errors[0].get("code", 0) if errors else 0
+
             if code == 344 or "daily limit" in err.lower():
                 self._daily_limit_hit = True
-                print("  [LIMIT] Daily tweet limit reached. Switching to like-only mode.")
+                print(f"  [LIMIT] Daily limit reached. No more tweets today.")
                 return None
+
             if code == 226 or "automated" in err.lower():
-                if max_retries > 0:
-                    import time
-                    wait = 45
-                    print(f"  [226] Anti-bot triggered. Waiting {wait}s...")
-                    time.sleep(wait)
-                    return self.create_tweet(text, reply_to, max_retries - 1)
-                # After 3 retries exhausted, skip this tweet but DON'T block entire cycle
-                print("  [226] Anti-bot persistent. Skipping this tweet.")
+                self._consecutive_fails += 1
+                if self._consecutive_fails >= 2:
+                    self._daily_limit_hit = True
+                    print(f"  [226] 2 consecutive anti-bot. Pausing tweets.")
+                else:
+                    print(f"  [226] Anti-bot. Will retry next cycle.")
                 return None
-            raise RuntimeError(f"CreateTweet: {err[:150]}")
+
+            print(f"  [create_tweet] error {code}: {err[:100]}")
+            return None
 
         tweet_id = (
             data.get("data", {})
@@ -270,6 +281,8 @@ class HttpTwitter:
         )
         if tweet_id:
             self.mark_engaged(tweet_id)
+            self._consecutive_fails = 0  # reset on success
+            print(f"  [tweet] POSTED {tweet_id}")
         return tweet_id or None
 
     def retweet(self, tweet_id: str) -> bool:
