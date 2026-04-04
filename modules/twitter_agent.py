@@ -58,7 +58,7 @@ MAX_LIKES_PER_DAY = 150
 MAX_QUOTES_PER_DAY = 10
 MAX_FOLLOWS_PER_DAY = 30
 MAX_THREADS_PER_DAY = 3
-MIN_TWEET_INTERVAL_MIN = 20
+MIN_TWEET_INTERVAL_MIN = 45
 MIN_REPLY_INTERVAL_MIN = 3
 MIN_LIKE_INTERVAL_SEC = 12
 MIN_QUOTE_INTERVAL_MIN = 30
@@ -173,12 +173,12 @@ def is_dead_hour() -> bool:
 
 
 def cycle_sleep_minutes() -> int:
-    """Dynamic sleep based on time of day."""
+    """Dynamic sleep based on time of day. Longer intervals to avoid 226."""
     if is_peak_hour():
-        return random.randint(12, 20)
+        return random.randint(25, 40)
     if is_dead_hour():
-        return random.randint(45, 90)
-    return random.randint(20, 35)
+        return random.randint(60, 120)
+    return random.randint(35, 50)
 
 
 # ─── Voice & safety ──────────────────────────────────────────────
