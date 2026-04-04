@@ -1592,7 +1592,13 @@ def run_cycle_http() -> dict:
                             pass
 
                     print(f"  [tweet] {text[:60]}...")
-                    tid = api.create_tweet(text, media_id=media_id)
+                    try:
+                        tid = api.create_tweet(text, media_id=media_id)
+                    except Exception as exc:
+                        print(f"  [tweet] create_tweet exception: {exc}")
+                        tid = None
+                    if not tid:
+                        print(f"  [tweet] FAILED (tid={tid}, can_post={api.can_post})")
                     if tid:
                         log.setdefault("tweets", []).append({"date": datetime.now().isoformat(), "text": text[:200], "id": tid})
                         stats["tweets"] += 1
