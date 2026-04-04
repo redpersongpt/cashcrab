@@ -1557,11 +1557,11 @@ def run_cycle_http() -> dict:
 
     # Activities — more variety, limit-aware
     if is_peak_hour():
-        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions", "quote", "conversations", "performance"]
+        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions", "quote", "conversations", "performance", "influencer_replies"]
     elif is_dead_hour():
         activities = ["like", "like", "performance"]
     else:
-        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow", "quote", "conversations"]
+        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow", "quote", "conversations", "influencer_replies"]
 
     # If daily limit hit, only do likes, follows, and performance tracking
     if not api.can_post:
@@ -1761,6 +1761,57 @@ def run_cycle_http() -> dict:
                                     pass
                 except Exception as exc:
                     print(f"  [perf] error: {exc}")
+
+            elif activity == "influencer_replies" and api.can_post:
+                # Watch influencer timelines for people with Windows problems
+                try:
+                    # Get tweets from Windows-related accounts in our timeline
+                    for t in timeline:
+                        if not can_reply(log) or not api.can_post:
+                            break
+                        # Only check tweets from known Windows influencers
+                        influencer_accounts = ["christitustech", "thiojoe", "windows", "windowsinsider"]
+                        if t.get("user", "").lower() not in influencer_accounts:
+                            continue
+                        if api.already_engaged(f"inf_{t['id']}"):
+                            continue
+
+                        # Get replies to this influencer's tweet
+                        replies = api.get_tweet_replies(t["id"])
+                        api.mark_engaged(f"inf_{t['id']}")
+
+                        for reply in replies[:5]:
+                            if not can_reply(log) or not api.can_post:
+                                break
+                            if api.already_engaged(reply["id"]):
+                                continue
+                            if not _is_reply_worthy(reply["text"]):
+                                continue
+                            if not _can_reply_to_user(reply.get("user", "")):
+                                continue
+
+                            our_reply = gen_reply(reply["text"])
+                            if our_reply:
+                                print(f"  [influencer] replying to @{reply['user']} under @{t['user']}: {our_reply[:50]}...")
+                                rid = api.create_tweet(our_reply, reply_to=reply["id"])
+                                if rid:
+                                    log.setdefault("replies", []).append({
+                                        "date": datetime.now().isoformat(),
+                                        "to": reply["text"][:100],
+                                        "r": our_reply[:200],
+                                        "user": reply["user"],
+                                        "source": "influencer",
+                                    })
+                                    stats["replies"] += 1
+                                    track_action("reply")
+                                    api.mark_engaged(reply["id"])
+                                    _mark_replied_user(reply["user"])
+                                    print(f"  [influencer] POSTED {rid}")
+                                time.sleep(random.uniform(15, 30))
+                                break  # max 1 reply per influencer tweet
+                        break  # max 1 influencer tweet per cycle
+                except Exception as exc:
+                    print(f"  [influencer] error: {exc}")
 
             elif activity == "reply_mentions" and api.can_post:
                 # Reply to people who mentioned us (NOT ourselves)
