@@ -1242,7 +1242,7 @@ def run_cycle(page) -> dict:
         return stats
 
     # Release check
-    new_rel = _new_release(log)
+    new_rel = None  # disabled — was spamming same release
     if new_rel and can_tweet(log):
         try:
             text = gen_tweet(release_tag=new_rel)
@@ -1532,7 +1532,7 @@ def run_cycle_http() -> dict:
     print(f"  timeline: {len(timeline)} tweets")
 
     # Release check
-    new_rel = _new_release(log)
+    new_rel = None  # disabled — was spamming same release
     if new_rel and can_tweet(log) and api.can_post:
         text = gen_tweet(release_tag=new_rel)
         if text:
@@ -1795,7 +1795,7 @@ def run_cycle_hybrid(cookies: dict, pw_post_fn) -> dict:
     api = HttpTwitter()
 
     # Release check
-    new_rel = _new_release(log)
+    new_rel = None  # disabled — was spamming same release
     if new_rel and can_tweet(log):
         text = gen_tweet(release_tag=new_rel)
         if text:
