@@ -58,7 +58,7 @@ MAX_LIKES_PER_DAY = 150
 MAX_QUOTES_PER_DAY = 10
 MAX_FOLLOWS_PER_DAY = 30
 MAX_THREADS_PER_DAY = 3
-MIN_TWEET_INTERVAL_MIN = 45
+MIN_TWEET_INTERVAL_MIN = 30
 MIN_REPLY_INTERVAL_MIN = 3
 MIN_LIKE_INTERVAL_SEC = 12
 MIN_QUOTE_INTERVAL_MIN = 30
@@ -402,45 +402,38 @@ def _output_leaks_ai(text: str) -> bool:
 
 
 def _relevant(text: str) -> bool:
-    """Like filter — broader than reply filter but still Windows/PC focused."""
+    """Like filter — dev/tech/PC tweets from real people. Broader than reply filter."""
     if len(text) < 20 or _spam(text):
         return False
     lower = text.lower()
 
-    # REJECT obvious non-tech
+    # Reject obvious non-tech + brands
     reject = [
         "crypto", "nft", "giveaway", "follow me", "dm me", "subscribe",
-        "download our", "introducing our", "try our", "boost your",
-        "pray", "god", "jesus", "bible", "sports", "football",
-        "food", "recipe", "movie", "netflix", "spotify",
-        "good morning", "gm everyone", "happy birthday",
-        "their uses", "hitting limits",
+        "download our", "try our", "boost your",
+        "pray", "god", "sports", "football", "food", "recipe",
+        "movie", "netflix", "good morning", "gm everyone", "happy birthday",
+        "follow back", "f4f", "like and retweet",
     ]
     if any(r in lower for r in reject):
         return False
 
-    # Like anything related to: windows, PC, hardware, dev tools, open source, coding
-    like_worthy = [
-        "windows", "pc ", "laptop", "desktop", "computer",
-        "debloat", "bloatware", "telemetry", "privacy",
-        "task manager", "cpu", "gpu", "ram", "ssd", "nvme",
-        "performance", "optimize", "slow", "fast",
-        "game bar", "cortana", "onedrive", "registry",
-        "coding", "code", "programming", "developer", "built",
-        "open source", "github", "rust ", "terminal",
-        "setup", "monitor", "keyboard", "mechanical",
-        "linux", "wsl", "dual boot",
+    # Must be about dev/tech/PC (broader for likes)
+    tech = [
+        "windows", "pc", "laptop", "desktop", "computer",
+        "code", "coding", "developer", "programming", "built",
+        "github", "open source", "terminal", "vscode",
+        "cpu", "gpu", "ram", "ssd", "performance",
+        "setup", "monitor", "keyboard",
+        "linux", "wsl", "rust", "typescript",
+        "deploy", "debug", "shipped", "project",
     ]
-    if not any(lw in lower for lw in like_worthy):
+    if not any(t in lower for t in tech):
         return False
 
-    # Must look like a real person's tweet
-    personal = ["i ", "i'm", "my ", "?", "why ", "how ", "just ", "finally", "anyone", "hate", "love"]
-    if not any(p in lower for p in personal):
-        return False
-
-    return True
-
+    # Must be personal
+    personal = ["i ", "i\'m", "my ", "?", "just ", "finally", "anyone", "built", "made", "learned"]
+    return any(p in lower for p in personal)
 
 def _roastable(text: str) -> bool:
     return any(t in text.lower() for t in _roast_triggers())
