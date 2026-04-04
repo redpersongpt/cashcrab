@@ -203,15 +203,19 @@ class HttpTwitter:
             pass
         return False
 
-    def create_tweet(self, text: str, reply_to: str | None = None, max_retries: int = 1) -> str | None:
+    def create_tweet(self, text: str, reply_to: str | None = None, max_retries: int = 1, media_id: str | None = None) -> str | None:
         """Post a tweet or reply. Returns tweet ID or None. Retries on transient 226."""
         if self._daily_limit_hit:
             return None
 
+        media_entities = []
+        if media_id:
+            media_entities = [{"media_id": media_id, "tagged_users": []}]
+
         variables = {
             "tweet_text": text,
             "dark_request": False,
-            "media": {"media_entities": [], "possibly_sensitive": False},
+            "media": {"media_entities": media_entities, "possibly_sensitive": False},
             "semantic_annotation_ids": [],
         }
         if reply_to:

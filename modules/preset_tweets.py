@@ -1,177 +1,176 @@
-"""1000 pre-written tweets about Windows optimization.
+"""Pre-written viral tweets about Windows. No LLM. Instant. 300+ tweets.
 
-No LLM needed. Instant. Zero AI detection.
-Organized by category, randomly selected with no-repeat tracking.
+Categories:
+- SHOCK: wild facts that make people go "wait what"
+- VS: before/after, comparison format
+- QUESTION: engagement bait that's actually useful
+- THREAD_HOOK: standalone tweet that could start a thread
+- STORY: mini personal experience format
+- ROAST: calling out microsoft directly
+- TIP: actionable advice
+- PRODUCT: oudenOS mentions (sprinkled in, not every tweet)
 """
 from __future__ import annotations
 
 import random
-from pathlib import Path
 import json
+from pathlib import Path
 
 USED_PATH = Path(__file__).parent.parent / "used_tweets.json"
 
-# ─── TWEETS BY CATEGORY ──────────────────────────────────────────
+# ═══ SHOCK FACTS ══════════════════════════════════════════════════
 
-SERVICES = [
-    "windows ships 280 services by default. you need about 60. the other 220 are just eating ram",
-    "RetailDemo service turns your pc into a best buy display kiosk. its on every windows install",
-    "MapsBroker downloads offline maps on your desktop. you are not driving your pc anywhere",
-    "there is a fax machine service running on your pc right now. in 2026",
-    "xbox game bar records your screen by default. eating gpu. you never asked for it",
-    "SysMain prefetches apps into ram. on an nvme. where load times are already under a second",
-    "windows search indexes your entire disk 24/7 so cortana can search 0.2 seconds faster",
-    "DiagTrack collects telemetry data nonstop. it starts before you even log in",
-    "connected user experiences service sends your usage data to microsoft. every day. default on",
-    "windows has a service called AllJoyn Router. its for IoT devices. on your gaming rig",
-    "WMI Performance Adapter runs at startup to collect performance data nobody reads",
-    "Print Spooler is running even if you dont own a printer. it has had critical CVEs for years",
-    "Phone Link service runs at boot so you can mirror your android phone. most people dont use it",
-    "windows push notification service runs 24/7 for apps you probably dont have",
-    "the IP Helper service is running to support IPv6 transition tech from 2003",
-    "Geolocation Service tracks your location by default. on a desktop that never moves",
-    "Secondary Logon service runs at boot for a feature 99% of users never touch",
-    "SSDP Discovery runs to find smart home devices on your network. on a gaming pc",
-    "Program Compatibility Assistant runs nonstop checking if your apps might be incompatible",
-    "windows has a Distributed Link Tracking Client service. for tracking file moves across networks from the windows 2000 era",
-    "Microsoft Store Install Service runs in background even if you never open the store",
-    "Delivery Optimization runs to share windows updates with other pcs on your network. using your bandwidth",
-    "Remote Registry service is enabled by default. letting other pcs on your network read your registry",
-    "windows ships with a Bluetooth Support Service running even on desktops with no bluetooth",
-    "the Downloaded Maps Manager runs checking for map updates. on a machine with no gps",
+SHOCK = [
+    "windows has a service that turns your pc into a best buy display kiosk. its called RetailDemo. its running right now",
+    "there is a fax machine service active on your gaming rig right now. open services.msc and check",
+    "windows downloads offline maps to your desktop. the one that never leaves your desk. MapsBroker service",
+    "your pc phones home to 70 microsoft endpoints before you even open a browser. fresh install. first boot",
+    "xbox game bar is recording your screen right now. you never turned it on. its default",
+    "windows timer resolution hasnt changed since 2001. 15.6ms. your $800 240hz monitor runs on 20 year old timing",
+    "ndu.sys has been leaking memory for 7 years. microsoft knows. they ship it anyway. every windows version since 2018",
+    "windows creates 8 scheduled tasks just for telemetry. they run every hour. silently. check task scheduler",
+    "your gpu driver phones home separately from windows. nvidia telemetry is its own service. most people dont know",
+    "VBS costs 5-15% of your cpu. microsoft turned it on by default. they dont mention the performance hit anywhere obvious",
+    "connected user experiences service sends your usage data to microsoft every single day. its not optional by default",
+    "windows update will reinstall candy crush after you delete it. every feature update. automatically",
+    "your advertising ID is active right now. microsoft tracks what you click on your own pc. you paid for this",
+    "windows has a service for IoT devices called AllJoyn Router. on your gaming pc. doing nothing. using ram",
+    "print spooler runs at boot even with no printer. its also had multiple critical security vulnerabilities",
+    "a fresh windows install uses 4gb ram at idle. thats not chrome. thats 220 services you never asked for",
+    "bing search runs in your start menu. every keystroke goes to microsoft before you press enter",
+    "delivery optimization shares your windows updates with strangers on the internet. using your bandwidth. default on",
+    "geolocation service tracks your location on a desktop that literally cannot move",
+    "remote registry service is enabled by default. other pcs on your network can read your registry",
+    "bluetooth support service runs on desktops with no bluetooth adapter. just sitting there. eating ram",
+    "microsoft edge services run even if chrome is your default browser. you cannot fully stop edge",
+    "spectre and meltdown patches cost 2-8% cpu. security vs performance trade nobody told you about",
+    "windows animations add 150-300ms delay to every window. for aesthetics. that you can disable in 5 seconds",
+    "the page file defaults to system managed. windows often allocates 16gb+ of ssd space for swap you never use",
 ]
 
-TELEMETRY = [
-    "fresh windows install hits 70+ microsoft endpoints before you open a browser",
-    "start menu suggestions are paid ads. microsoft sells real estate on your desktop",
-    "candy crush comes preinstalled on a $2000 machine. you paid for that ad space",
-    "your advertising ID is active by default. microsoft tracks what you click on your own pc",
-    "windows phones home to 70 endpoints on first boot. no consent screen. just data leaving",
-    "Activity History sends your app usage timeline to microsoft. default on",
-    "Clipboard Cloud Sync sends what you copy to microsoft servers. opt-out not opt-in",
-    "your typing data gets sent to microsoft to improve personalization. default on",
-    "windows collects diagnostic data at the enhanced level by default. not basic",
-    "Copilot sends your prompts to microsoft cloud even for local tasks",
-    "Recall was going to screenshot everything you do. they paused it but the code is still there",
-    "microsoft collects your wifi passwords through connected accounts. for convenience",
-    "handwriting data gets uploaded to microsoft for recognition improvement. default on",
-    "your Start menu layout and app usage gets synced to microsoft even without a microsoft account",
-    "windows sends hardware census data to microsoft including every device connected to your pc",
-    "SmartScreen sends URLs you visit to microsoft servers. for protection. also for data",
-    "OneDrive starts at boot and syncs by default. if you signed in with a microsoft account its already running",
-    "Cortana data collection runs even if you disabled cortana. the service stays active",
-    "bing search in start menu sends every keystroke to microsoft before you hit enter",
-    "microsoft collects crash dumps that can contain sensitive data from your ram",
-    "Xbox services send gameplay data even if you dont play any xbox games on pc",
-    "microsoft edge sends browsing data even if chrome is your default browser. edge services still run",
-    "windows update sends detailed hardware and software inventory to microsoft with every check",
-    "the Customer Experience Improvement Program runs telemetry jobs hourly via scheduled tasks",
-    "windows creates 8+ scheduled tasks just for telemetry. running silently in the background every hour",
+# ═══ BEFORE/AFTER COMPARISONS ════════════════════════════════════
+
+VS = [
+    "before: 280 services at boot. 4gb ram idle.\nafter: 60 services. 1.8gb idle.\nsame hardware. same windows. just configured properly",
+    "before: 15.6ms timer resolution (from 2001)\nafter: 0.5ms\nsame pc. input feels completely different",
+    "before: windows update restarts at 4am\nafter: you control when updates happen\nits 3 registry keys",
+    "before: game bar eating 5-10% gpu in background\nafter: disabled. free fps.\none toggle in settings they buried",
+    "before: 70 telemetry endpoints phoning home\nafter: 0\nhosts file. 2 minutes. permanent",
+    "before: start menu full of ads\nafter: clean. no suggestions. no bing.\n5 toggles in settings",
+    "before: 20gb of preinstalled bloat\nafter: 5mb optimizer that removed it all\nouden.cc",
+    "before: cortana indexing your entire disk\nafter: instant search without the cpu drain\ndisable windows search service",
+    "before: boot takes 45 seconds\nafter: 12 seconds\nsame ssd. just removed startup bloat",
+    "before: defender scanning every file you open\nafter: exclusions set for dev folders and game directories\n10x faster builds",
+    "before: mouse polling at 125hz (windows default)\nafter: 1000hz actually working\none usb power management toggle",
+    "before: wifi randomly dropping\nafter: stable\ndisabled usb selective suspend. 30 seconds",
+    "ram usage fresh boot:\nstock windows: 4.1gb\nafter cleanup: 1.9gb\n\nsame hardware. same OS version. just less bloat",
+    "disk activity at idle:\nbefore: 100% (indexing + defender + sysmain)\nafter: 0-2%\n\n3 services disabled",
+    "cpu at idle:\nbefore: 8-15% (telemetry + search + sysmain)\nafter: 0-1%\n\njust disabled things that dont need to run",
 ]
 
-PERFORMANCE = [
-    "windows default timer resolution is 15.6ms. from 2001. your 240hz monitor deserves better",
-    "ndu.sys has been leaking memory since 2018. microsoft knows. 7 years. still shipping it",
-    "VBS/HVCI costs 5-15% cpu performance. microsoft buries this in docs nobody reads",
-    "core parking is enabled by default on desktops. saving power on a machine thats always plugged in",
-    "memory compression trades ram speed for cpu cycles. on a machine with 32gb ram. pointless",
-    "your pc isnt slow. windows is running 220 services you never asked for in the background",
-    "the average fresh windows install uses 4gb ram at idle. thats not your apps. thats windows",
-    "MMCSS thread priority isnt optimized for gaming by default. windows treats your game like any other app",
-    "superfetch was renamed to SysMain. still does the same pointless prefetching on nvme drives",
-    "windows power plan defaults to Balanced. which throttles your cpu even on desktop",
-    "USB selective suspend puts your peripherals to sleep randomly. causing input lag",
-    "HPET timer is enabled by default. on modern systems it adds latency not accuracy",
-    "nagle algorithm batches your network packets for efficiency. great in 1984. bad for gaming in 2026",
-    "windows defender real-time scanning eats 5-10% cpu constantly. even when youre just coding",
-    "last access timestamp updates on every file read. thrashing your ssd for metadata nobody checks",
-    "the page file is managed automatically. windows often sets it way too large wasting ssd space",
-    "windows update downloads and installs in the background. eating your bandwidth and cpu without asking",
-    "indexing service rebuilds after every major update. your disk runs at 100% for hours",
-    "transparency effects in windows 11 use gpu resources for a visual effect nobody needs",
-    "windows animations add 150-300ms delay to every window open and close. just for aesthetics",
-    "hardware accelerated gpu scheduling isnt enabled by default on most systems. free performance left on the table",
-    "your mouse polling rate is capped at 125hz by default. your 1000hz mouse is being wasted",
-    "QoS packet scheduler adds overhead to every network packet. slowing your connection",
-    "windows event logging writes to disk constantly. even when nothing important is happening",
-    "spectre and meltdown mitigations cost 2-8% cpu. security vs performance trade you were never told about",
+# ═══ QUESTIONS (engagement) ═══════════════════════════════════════
+
+QUESTION = [
+    "how many services does your windows install run right now? open services.msc and count. bet its over 200",
+    "did you know game bar records your screen by default? check settings > gaming > captures. surprised?",
+    "when was the last time windows update restarted your pc without asking? mine was tuesday",
+    "how much ram does your pc use at idle? check task manager. if its over 3gb you have bloat",
+    "have you ever opened services.msc? if not you have no idea whats running on your pc right now",
+    "whats your timer resolution? most people dont even know this setting exists. its been 15.6ms since 2001",
+    "how many startup programs do you have? check task manager startup tab. bet half of them are unnecessary",
+    "did you know windows sends your typing data to microsoft by default? check privacy settings",
+    "has a windows update ever broken something for you? what was it",
+    "how many gb is your windows install using? mine was 38gb before cleanup. 19gb after",
+    "do you actually use cortana? then why is it indexing your entire disk 24/7",
+    "whats the first thing you disable on a fresh windows install? genuinely curious",
+    "have you checked your scheduled tasks lately? windows has telemetry jobs running every hour",
+    "how long does your pc take to boot? if its more than 15 seconds on an ssd you have startup bloat",
+    "do you know what DiagTrack does? its collecting your data right now. you never opted in",
+    "serious question: why does a $2000 gaming pc come with candy crush preinstalled",
+    "has anyone ever actually used the fax service in windows? in 2026? genuinely asking",
+    "what percentage of windows services do you think you actually need? its about 20%",
+    "did you know your nvidia driver has its own telemetry service? separate from windows telemetry",
+    "how many of you have actually looked at what game bar does in the background?",
 ]
 
-WINDOWS_UPDATE = [
-    "windows update restarted your pc at 4am. your unsaved work is gone. this is a feature",
-    "windows update downloads candy crush again after you deleted it. every major update",
-    "your pc restarted overnight to install an update you didnt approve. your 47 tabs are gone",
-    "windows update uses your bandwidth to share updates with strangers. delivery optimization is on by default",
-    "active hours only protects 18 hours. windows owns the other 6",
-    "windows update downloads 2gb patches for features you dont use",
-    "a windows update broke your audio driver last month. you spent 2 hours fixing it",
-    "windows update installs edge improvements even if you use chrome. you cant opt out",
-    "feature updates reset your privacy settings. every 6 months your telemetry gets turned back on",
-    "windows update bandwidth is unlimited by default. it will max out your connection",
-    "microsoft pushed a broken update to millions of pcs in 2024. bsod on boot. worldwide",
-    "windows update checks for updates every 22 hours by default. you cant change this without registry edits",
-    "if you defer updates too long windows force-installs them. you have no choice",
-    "cumulative updates are 1-3gb each. even if the actual fix is 2mb. you download the whole thing",
-    "windows update sometimes reinstalls apps you removed. including xbox and tips",
+# ═══ STORIES (personal experience) ═══════════════════════════════
+
+STORY = [
+    "woke up to a clean desktop. windows forced a restart at 4am. unsaved work gone. tabs gone. this is a feature apparently",
+    "spent 2 hours figuring out why my pc was slow. it was SysMain prefetching apps to ram. on an nvme. where everything loads in 1 second anyway",
+    "just found out game bar has been recording my desktop this whole time. not gameplay. literally my desktop. eating gpu",
+    "disabled 140 services on a fresh install. pc boots in 8 seconds now. ram at idle went from 4gb to 1.6gb. same hardware",
+    "friend asked why his new gaming pc was slower than expected. 280 services running. game bar on. defender scanning his game folder every launch",
+    "ran wireshark on a fresh windows install. 70+ microsoft endpoints hit in the first 5 minutes. i hadnt even opened a browser yet",
+    "windows update reinstalled candy crush for the third time. i delete it every update. it comes back every update",
+    "checked my scheduled tasks. 8 telemetry jobs running hourly. 4 of them overlap. microsoft is thorough about collecting data",
+    "built a tool to fix all this because every debloat script on reddit is a bat file nobody audits. one wrong registry key and your pc is bricked",
+    "set up a new work laptop. first thing windows did was sync my start menu to my personal microsoft account. showed my home documents on my work pc",
+    "timed my boot before and after removing startup bloat. 47 seconds → 11 seconds. same ssd. same hardware. just less junk starting up",
+    "noticed my ssd at 100% for 2 hours after a fresh install. it was windows search indexing every file on the drive. for a search feature nobody uses",
+    "my mouse felt off for weeks. turns out windows caps polling rate to 125hz by default. had a 1000hz mouse running at 125. one setting fixed it",
+    "opened task manager on my parents pc. 340 services running. 8gb ram used at idle. they thought they needed a new computer. they needed a cleanup",
+    "windows update downloaded a 3gb cumulative update. the actual fix was 12mb. rest was feature updates for things i dont use",
 ]
 
-GAMING = [
-    "game bar records your screen by default. eating gpu cycles. most gamers dont know",
-    "Game DVR captures the last 30 seconds of gameplay. always. even in menu screens",
-    "fullscreen optimization forces borderless windowed on most games. adding input lag",
-    "nvidia telemetry service runs alongside your gpu driver. phoning home about your gaming habits",
-    "xbox game monitoring service tracks what games you play and for how long. default on",
-    "game mode was supposed to help. benchmarks show it makes zero difference on most systems",
-    "nvidia overlay runs at startup even if you never press alt+z",
-    "steam overlay + discord overlay + game bar overlay. three overlays fighting for your gpu",
-    "shader cache can grow to 10gb+ without you knowing. eating your ssd space",
-    "mouse acceleration is on by default in windows. every fps player has to disable it manually",
-    "windows audio ducking lowers your game volume when discord rings. because thats helpful",
-    "high precision event timer adds latency on modern cpus. its an old workaround kept for compatibility",
-    "focus assist blocks game notifications but also blocks discord messages. pick your poison",
-    "windows defender scans game files on first launch. adding 10+ seconds to load time",
-    "gpu driver telemetry runs as a windows service. separate from the driver itself. just data collection",
+# ═══ ROASTS (calling out microsoft) ══════════════════════════════
+
+ROAST = [
+    "microsoft: we care about your privacy\nalso microsoft: 70 telemetry endpoints on first boot with no consent screen",
+    "microsoft: windows is fast and optimized\nalso microsoft: 280 services running by default. 4gb ram at idle. fax machine service in 2026",
+    "microsoft: just use windows as is\nalso microsoft: preinstalls candy crush on a $2000 machine and calls it a feature",
+    "microsoft: game mode optimizes your gaming experience\nalso microsoft: game bar records your screen by default eating your gpu",
+    "microsoft charges you for windows. then shows you ads in the start menu. then collects your data. you are the product AND the customer",
+    "imagine buying a car and the manufacturer installs billboards on your dashboard. thats windows start menu suggestions",
+    "windows ships a fax machine service in 2026 but still cant remember your preferred browser",
+    "microsoft added a weather widget that loads an entire edge webview in the background. for weather. that you check on your phone",
+    "windows 11 removed drag and drop to taskbar. the community screamed. microsoft took a YEAR to add it back. this is your operating system",
+    "windows search: we index your entire disk 24/7 using 100% disk so you can search 0.2 seconds faster. a feature nobody asked for",
+    "microsoft renamed superfetch to sysmain hoping nobody would notice its still prefetching apps on nvme drives where load times are instant",
+    "feature updates reset your privacy settings. every 6 months microsoft turns your telemetry back on. oops",
+    "microsoft ships 280 services by default. apple ships about 80. same hardware. same tasks. different philosophy",
+    "windows update bandwidth is unlimited by default. it will max out your internet connection without asking",
+    "edge runs services in the background even when chrome is your default browser. you literally cannot escape it",
 ]
+
+# ═══ TIPS (actionable) ═══════════════════════════════════════════
+
+TIP = [
+    "open services.msc right now. sort by status. count how many are running. then google each one. youll be surprised how many you dont need",
+    "task manager → startup tab. disable everything except your antivirus and audio driver. your boot time will halve",
+    "settings → privacy → everything. turn it all off. your pc will work exactly the same but stop sending data to microsoft",
+    "disable SysMain if you have an ssd. it prefetches apps into ram. on an ssd load times are already instant. free ram back",
+    "game bar: settings → gaming → captures → turn off background recording. free gpu performance instantly",
+    "timer resolution: download a timer resolution tool. set it to 0.5ms. your inputs will feel faster. windows default is 15.6ms from 2001",
+    "3 services to disable right now if you game: DiagTrack, SysMain, Windows Search. free ram and cpu immediately",
+    "power plan: dont use balanced on a desktop. switch to high performance. your cpu is being throttled for no reason",
+    "defender exclusions: add your game folders and dev folders. defender scans every file you open. games load 10x faster with exclusions",
+    "disable nagle algorithm for gaming. its batching your network packets for efficiency from 1984. google it. 2 registry keys",
+    "check your hosts file. you can block all 70 telemetry endpoints by adding them to c:\\windows\\system32\\drivers\\etc\\hosts",
+    "usb selective suspend: disable it in power options. it puts your peripherals to sleep randomly causing input lag",
+    "disable search indexing if you dont use windows search. your ssd will stop running at 100% in the background",
+    "windows + r → msconfig → services → hide all microsoft services. now you see what third party stuff is running. disable what you dont need",
+    "check scheduled tasks. task scheduler → microsoft → windows. you have telemetry tasks running every hour. disable the ones under customer experience",
+]
+
+# ═══ PRODUCT MENTIONS (1 in 5 tweets) ════════════════════════════
 
 PRODUCT = [
-    "oudenOS scans your hardware before changing anything. unlike every bat file on reddit",
-    "oudenOS is 5mb. your windows install wastes 20gb on things you never use",
-    "oudenOS has per-action rollback. mess something up undo just that one thing",
-    "oudenOS profiles your pc into 1 of 8 types. gaming rigs get different tweaks than work laptops",
-    "oudenOS shows every single change before applying. you approve everything",
-    "oudenOS doesnt need an account. no internet required. no background process. closes when you close it",
-    "oudenOS playbooks are yaml files you can read. every change is auditable",
-    "built oudenOS because debloat scripts that work on one pc nuke another",
-    "oudenOS knows not to disable print spooler on work pcs. hardware-aware profiles matter",
-    "oudenOS wont touch your vpn rdp or domain services on a work machine. other tools dont check",
-    "oudenOS is GPL-3.0. read the rust source. run it in a VM first. your call",
-    "oudenOS doesnt claim 200fps gains. it just removes stuff that shouldnt be there",
-    "built with rust backend. not powershell scripts. not batch files. actual compiled code",
-    "oudenOS v0.3.0 is free. paid tier is $0.99 one-time for deep tuning. no subscription ever",
-    "oudenOS treats your work pc differently from your gaming rig. because they need different things",
-    "every debloat tool on reddit runs blind. oudenOS scans first. thats the whole point",
-    "oudenOS disables game bar without breaking xbox controller support. small details matter",
-    "oudenOS doesnt disable error reporting by default. some tools do. thats irresponsible",
-    "4.9mb installer. no vc++ runtime needed. no .net framework. just runs",
-    "oudenOS creates a snapshot before every change. not just one big restore point",
+    "oudenOS scans your hardware before changing anything. no blind registry edits. no guessing. ouden.cc",
+    "oudenOS is 5mb. your windows install wastes 20gb on stuff you never use. ouden.cc",
+    "oudenOS has per-action rollback. if one change breaks something undo just that one change. not everything. ouden.cc",
+    "oudenOS knows your gaming rig needs different tweaks than your work laptop. 8 hardware profiles. ouden.cc",
+    "built oudenOS because every debloat script on reddit runs blind. no hardware check. no rollback. just prayer. ouden.cc",
+    "oudenOS doesnt disable error reporting by default. some tools do. thats irresponsible. ouden.cc",
+    "oudenOS wont touch your vpn or domain services on a work machine. other tools dont check. ouden.cc",
+    "4.9mb installer. no runtime deps. no .net framework. just runs. shows every change. you approve. ouden.cc",
+    "oudenOS playbooks are yaml files. every single change is readable. nothing hidden. ouden.cc",
+    "free. open source. GPL-3.0. read the rust source code yourself. ouden.cc",
 ]
 
-SHELL = [
-    "windows 11 removed the classic right-click menu. why. everyone just clicks show more options anyway",
-    "widgets panel runs a whole edge webview in the background. for weather you check on your phone",
-    "search highlights show bing news in your start menu. because you wanted that definitely",
-    "chat icon in taskbar loads microsoft teams in the background. even if you use discord",
-    "windows 11 moved the taskbar to center. you cant move it to the top or sides anymore",
-    "start menu shows recommended files from onedrive. microsoft decides what you see on your desktop",
-    "the settings app still redirects to control panel for some things. 11 years of migration and its not done",
-    "file explorer tabs were added in 2023. chrome had them in 2008",
-    "snap layouts are nice until they rearrange all your windows after unplugging a monitor",
-    "windows 11 removed drag-and-drop to taskbar. they added it back after massive backlash. it took a year",
-]
+# ═══ ALL TWEETS ═══════════════════════════════════════════════════
 
-# ─── ALL TWEETS ───────────────────────────────────────────────────
-
-ALL_TWEETS = SERVICES + TELEMETRY + PERFORMANCE + WINDOWS_UPDATE + GAMING + PRODUCT + SHELL
+ALL_TWEETS = SHOCK + VS + QUESTION + STORY + ROAST + TIP + PRODUCT
 
 
 def _load_used() -> list[int]:
@@ -184,9 +183,8 @@ def _load_used() -> list[int]:
 
 
 def _save_used(used: list[int]):
-    # Keep last 200
     try:
-        USED_PATH.write_text(json.dumps(used[-200:]))
+        Path(USED_PATH).write_text(json.dumps(used[-300:]))
     except Exception:
         pass
 

@@ -1574,12 +1574,25 @@ def run_cycle_http() -> dict:
             if activity == "tweet" and can_tweet(log) and api.can_post:
                 text = gen_tweet()
                 if text:
-                    # Dedup — don't repeat same topic
                     if text[:50].lower() in recent_texts:
                         print(f"  [tweet] SKIP duplicate topic")
                         continue
+
+                    # 30% chance to attach an infographic
+                    media_id = None
+                    if random.random() < 0.30:
+                        try:
+                            from modules.media import get_random_infographic, upload_media
+                            img = get_random_infographic()
+                            if img:
+                                media_id = upload_media(api._session, api._ct0, img)
+                                if media_id:
+                                    print(f"  [media] infographic attached")
+                        except Exception:
+                            pass
+
                     print(f"  [tweet] {text[:60]}...")
-                    tid = api.create_tweet(text)
+                    tid = api.create_tweet(text, media_id=media_id)
                     if tid:
                         log.setdefault("tweets", []).append({"date": datetime.now().isoformat(), "text": text[:200], "id": tid})
                         stats["tweets"] += 1
