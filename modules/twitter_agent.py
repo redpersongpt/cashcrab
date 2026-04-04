@@ -708,8 +708,12 @@ def _new_release(log: dict) -> str | None:
     if not rel or not rel.get("tag"):
         return None
     tag = rel["tag"]
-    if any(tag in t.get("text", "") for t in log.get("tweets", [])):
-        return None
+    # Check if we already tweeted about this release (by tag in text OR type=release)
+    for t in log.get("tweets", []):
+        if t.get("type") == "release":
+            return None  # already did a release tweet this cycle
+        if tag in t.get("text", ""):
+            return None
     return tag
 
 
@@ -751,22 +755,24 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
         topics = _topics()
         if not topics:
             return None
-        # Content calendar — bias topic selection by day of week
-        content_type = _today_content_type()
-        type_keywords = {
-            "services": ["service", "RetailDemo", "MapsBroker", "fax", "280", "SysMain", "game bar"],
-            "telemetry": ["telemetry", "endpoint", "privacy", "phone home", "ads", "candy crush"],
-            "performance": ["timer", "15.6ms", "ndu", "ram", "cpu", "VBS", "update", "slow"],
-            "product": [_product().lower(), "scans hardware", "rollback", "5mb", "optimizer"],
-        }
-        kws = type_keywords.get(content_type, [])
-        # Prefer topics matching today's content type
-        matching = [t for t in topics if any(k.lower() in t.lower() for k in kws)]
-        topic = random.choice(matching) if matching else random.choice(topics)
+
+        # Pick topic that HASN'T been used recently
+        log = _load_log()
+        recent_tweets = [t.get("text", "").lower() for t in log.get("tweets", [])[-15:]]
+
+        # Score each topic by how recently it was used
+        unused = []
+        for topic in topics:
+            topic_words = set(topic.lower().split()[:3])  # first 3 words as signature
+            was_used = any(all(w in rt for w in topic_words) for rt in recent_tweets)
+            if not was_used:
+                unused.append(topic)
+
+        topic = random.choice(unused) if unused else random.choice(topics)
 
         fmt = random.choice(TWEET_FORMATS)
-
         prompt = fmt.format(topic=topic, url=url, name=name)
+
     text = llm.generate(prompt, system=vp).strip().strip('"\'')
     if len(text) > 280: text = text[:277]
     if not text or len(text) < 30:
@@ -777,7 +783,6 @@ def gen_tweet(release_tag: str | None = None) -> str | None:
         print(f"  [AI-LEAK] blocked tweet: {text[:60]}...")
         return None
     return text
-
 
 def _is_reply_worthy(tweet_text: str) -> bool:
     """STRICT: Only reply to tweets about Windows problems or PC optimization."""
