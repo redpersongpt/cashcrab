@@ -1745,11 +1745,15 @@ def run_cycle_http() -> dict:
                     print(f"  [perf] error: {exc}")
 
             elif activity == "reply_mentions" and api.can_post:
-                # Reply to people who mentioned us
+                # Reply to people who mentioned us (NOT ourselves)
                 notifs = api.notifications()
+                my_user = api.get_me().get("username", "").lower()
                 for n in notifs[:5]:
                     if not can_reply(log) or not api.can_post:
                         break
+                    # Skip our own tweets in notifications
+                    if n.get("user", "").lower() == my_user:
+                        continue
                     if _spam(n["text"]) or api.already_engaged(n["id"]):
                         continue
                     reply = gen_mention_reply(n["text"])
