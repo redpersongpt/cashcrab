@@ -198,30 +198,11 @@ def generate(prompt: str, system: str = "You are a helpful assistant.", max_retr
     codex_on = optional_section("codex_llm", {}).get("enabled", False)
 
     if kind == "qwen_code":
-        # Build fallback chain: gemini first (works on VDS), then others
-        providers = []
-        if gemini_on and shutil.which("gemini"):
-            providers.append("gemini")
-        if use_g4f:
-            providers.append("g4f")
-        if codex_on and shutil.which("codex"):
-            providers.append("codex")
-        providers.append("qwen")
-
-        for provider in providers:
-            try:
-                if provider == "g4f":
-                    return _generate_with_g4f(prompt, system, max_retries)
-                elif provider == "codex":
-                    return _generate_with_codex(prompt, system, max_retries)
-                elif provider == "gemini":
-                    return _generate_with_gemini(prompt, system, max_retries)
-                else:
-                    return _generate_with_qwen(prompt, system, model, max_retries)
-            except Exception as exc:
-                print(f"  [{provider}] failed, trying next: {exc}")
-                continue
-        raise RuntimeError("All LLM providers failed")
+        # Gemini only — simple, fast, no fallback chaos
+        if shutil.which("gemini"):
+            return _generate_with_gemini(prompt, system, max_retries)
+        # Fallback to qwen only if gemini not installed
+        return _generate_with_qwen(prompt, system, model, max_retries)
 
     for attempt in range(max_retries):
         try:
