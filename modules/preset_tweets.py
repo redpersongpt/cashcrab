@@ -48,24 +48,24 @@ SHOCK = [
     "the page file defaults to system managed. windows often allocates 16gb+ of ssd space for swap you never use",
 ]
 
-# ═══ BEFORE/AFTER COMPARISONS ════════════════════════════════════
+# ═══ BEFORE/AFTER COMPARISONS ════════════════════════════════
 
 VS = [
-    "before: 280 services at boot. 4gb ram idle.\nafter: 60 services. 1.8gb idle.\nsame hardware. same windows. just configured properly",
-    "before: 15.6ms timer resolution (from 2001)\nafter: 0.5ms\nsame pc. input feels completely different",
-    "before: windows update restarts at 4am\nafter: you control when updates happen\nits 3 registry keys",
-    "before: game bar eating 5-10% gpu in background\nafter: disabled. free fps.\none toggle in settings they buried",
-    "before: 70 telemetry endpoints phoning home\nafter: 0\nhosts file. 2 minutes. permanent",
-    "before: start menu full of ads\nafter: clean. no suggestions. no bing.\n5 toggles in settings",
-    "before: 20gb of preinstalled bloat\nafter: 5mb optimizer that removed it all\nouden.cc",
-    "before: cortana indexing your entire disk\nafter: instant search without the cpu drain\ndisable windows search service",
-    "before: boot takes 45 seconds\nafter: 12 seconds\nsame ssd. just removed startup bloat",
-    "before: defender scanning every file you open\nafter: exclusions set for dev folders and game directories\n10x faster builds",
-    "before: mouse polling at 125hz (windows default)\nafter: 1000hz actually working\none usb power management toggle",
-    "before: wifi randomly dropping\nafter: stable\ndisabled usb selective suspend. 30 seconds",
-    "ram usage fresh boot:\nstock windows: 4.1gb\nafter cleanup: 1.9gb\n\nsame hardware. same OS version. just less bloat",
-    "disk activity at idle:\nbefore: 100% (indexing + defender + sysmain)\nafter: 0-2%\n\n3 services disabled",
-    "cpu at idle:\nbefore: 8-15% (telemetry + search + sysmain)\nafter: 0-1%\n\njust disabled things that dont need to run",
+    "stock windows uses 4.1gb ram at idle. i disabled 140 unnecessary services and it dropped to 1.9gb. same hardware same OS",
+    "changed timer resolution from 15.6ms (default since 2001) to 0.5ms. input lag noticeably better. free tweak that takes 10 seconds",
+    "my pc booted in 47 seconds with stock windows. removed startup bloat and its 11 seconds now. same ssd",
+    "disabled game bar background recording. gpu usage at idle dropped from 8% to 0%. nvidia overlay was eating frames for nothing",
+    "blocked 70 telemetry endpoints in my hosts file. took 2 minutes. windows still works perfectly. just stopped phoning home",
+    "turned off start menu suggestions. no more candy crush ads on a pc i paid $2000 for. 5 toggles in settings",
+    "stock windows had 280 services running. disabled the ones i dont need and kept 60. pc feels like a different machine",
+    "disabled cortana and windows search indexing. disk usage at idle went from 100% to 2%. ssd stopped thrashing",
+    "set power plan from balanced to high performance on my desktop. cpu boost actually works now instead of being throttled",
+    "added defender exclusions for my game folder. game load times went from 25 seconds to 8. defender was scanning every file on launch",
+    "disabled usb selective suspend. mouse and keyboard stopped randomly disconnecting. one checkbox in power options",
+    "uninstalled all preloaded apps (candy crush, disney, tiktok). freed 3gb of disk and removed 8 startup entries",
+    "disabled nagle algorithm for gaming. two registry keys. network latency in games dropped by 15-20ms",
+    "turned off transparency effects and animations. windows feels instant now. every click responds immediately instead of waiting 200ms",
+    "found 8 scheduled telemetry tasks running every hour. disabled them in task scheduler. cpu at idle is finally 0-1%",
 ]
 
 # ═══ QUESTIONS (engagement) ═══════════════════════════════════════

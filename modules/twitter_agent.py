@@ -52,13 +52,13 @@ ANALYTICS_PATH = ROOT / "agent_analytics.json"
 PERFORMANCE_PATH = ROOT / "tweet_performance.json"
 
 # Rate limits (verified account, aggressive but safe)
-MAX_TWEETS_PER_DAY = 8
+MAX_TWEETS_PER_DAY = 15
 MAX_REPLIES_PER_DAY = 80
 MAX_LIKES_PER_DAY = 150
 MAX_QUOTES_PER_DAY = 10
 MAX_FOLLOWS_PER_DAY = 30
 MAX_THREADS_PER_DAY = 3
-MIN_TWEET_INTERVAL_MIN = 60
+MIN_TWEET_INTERVAL_MIN = 40
 MIN_REPLY_INTERVAL_MIN = 3
 MIN_LIKE_INTERVAL_SEC = 12
 MIN_QUOTE_INTERVAL_MIN = 30
@@ -1557,11 +1557,11 @@ def run_cycle_http() -> dict:
 
     # Activities — more variety, limit-aware
     if is_peak_hour():
-        activities = ["tweet", "like", "like", "reply", "reply", "reply", "like", "retweet", "follow", "reply_mentions", "quote", "conversations", "performance", "influencer_replies", "search_reply"]
+        activities = ["tweet", "search_reply", "search_reply", "like", "like", "reply", "reply", "like", "follow", "reply_mentions", "influencer_replies", "search_reply"]
     elif is_dead_hour():
         activities = ["like", "like", "performance"]
     else:
-        activities = ["tweet", "like", "like", "reply", "reply", "like", "follow", "quote", "conversations", "influencer_replies", "search_reply"]
+        activities = ["tweet", "search_reply", "search_reply", "like", "like", "reply", "like", "follow", "influencer_replies", "search_reply"]
 
     # If daily limit hit, only do likes, follows, and performance tracking
     if not api.can_post:
@@ -1703,6 +1703,11 @@ def run_cycle_http() -> dict:
                 tweets = timeline
                 for t in tweets:
                     if api.already_engaged(t["id"]):
+                        continue
+                    # Only RT windows/PC tweets, nothing else
+                    lower = t.get("text", "").lower()
+                    windows_kw = ["windows", "debloat", "telemetry", "bloatware", "services", "optimize", "task manager"]
+                    if not any(kw in lower for kw in windows_kw):
                         continue
                     if not _relevant(t["text"]):
                         continue
