@@ -176,7 +176,10 @@ ALL_TWEETS = SHOCK + VS + QUESTION + STORY + ROAST + TIP + PRODUCT
 def _load_used() -> list[int]:
     if USED_PATH.exists():
         try:
-            return json.loads(USED_PATH.read_text())
+            data = json.loads(USED_PATH.read_text())
+            if isinstance(data, list):
+                return data
+            return []  # reset if wrong type
         except Exception:
             pass
     return []
