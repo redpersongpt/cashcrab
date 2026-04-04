@@ -203,7 +203,7 @@ class HttpTwitter:
             pass
         return False
 
-    def create_tweet(self, text: str, reply_to: str | None = None, max_retries: int = 3) -> str | None:
+    def create_tweet(self, text: str, reply_to: str | None = None, max_retries: int = 1) -> str | None:
         """Post a tweet or reply. Returns tweet ID or None. Retries on transient 226."""
         if self._daily_limit_hit:
             return None
@@ -246,8 +246,8 @@ class HttpTwitter:
             if code == 226 or "automated" in err.lower():
                 if max_retries > 0:
                     import time
-                    wait = 20 + (4 - max_retries) * 15  # 20s, 35s, 50s
-                    print(f"  [226] Anti-bot triggered. Waiting {wait}s... (retry {4 - max_retries}/3)")
+                    wait = 45
+                    print(f"  [226] Anti-bot triggered. Waiting {wait}s...")
                     time.sleep(wait)
                     return self.create_tweet(text, reply_to, max_retries - 1)
                 # After 3 retries exhausted, skip this tweet but DON'T block entire cycle
