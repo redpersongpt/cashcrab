@@ -748,6 +748,13 @@ TWEET_FORMATS = [
 
 
 def gen_tweet(release_tag: str | None = None) -> str | None:
+    # Use preset tweets — no LLM, no AI detection, instant
+    if not release_tag:
+        from modules.preset_tweets import get_preset_tweet
+        text = get_preset_tweet()
+        if text and len(text) <= 280:
+            return text
+
     vp, url, name = _voice(), _url(), _product()
     if release_tag:
         prompt = f"{name} {release_tag} just dropped. write a tweet announcing it. include {url}. under 270 chars. just the tweet."
