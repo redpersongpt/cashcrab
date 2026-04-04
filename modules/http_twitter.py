@@ -232,11 +232,13 @@ class HttpTwitter:
         self._refresh_ct0(r)
 
         if r.status_code != 200:
+            print(f"  [create_tweet] HTTP {r.status_code}: {r.text[:150]}")
             return None
 
         try:
             data = r.json()
         except Exception:
+            print(f"  [create_tweet] JSON parse failed, body={r.text[:100]}")
             return None
 
         if "errors" in data:
