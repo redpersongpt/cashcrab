@@ -205,9 +205,31 @@ class HttpTwitter:
         return False
 
     def create_tweet(self, text: str, reply_to: str | None = None, media_id: str | None = None) -> str | None:
-        """Post a tweet. ZERO retries. One shot. If fails, skip."""
+        """Post a tweet. Tries local proxy first (residential IP), falls back to direct."""
         if self._daily_limit_hit:
             return None
+
+        # Try tweet proxy on localhost:9876 (SSH tunnel to Mac's residential IP)
+        try:
+            import requests as req
+            proxy_resp = req.post("http://localhost:9876/tweet",
+                json={"text": text, "reply_to": reply_to},
+                timeout=30)
+            if proxy_resp.status_code == 200:
+                data = proxy_resp.json()
+                if data.get("tweet_id"):
+                    self.mark_engaged(data["tweet_id"])
+                    self._consecutive_fails = 0
+                    print(f"  [proxy] POSTED {data['tweet_id']}")
+                    return data["tweet_id"]
+                if "daily limit" in data.get("error", "").lower():
+                    self._daily_limit_hit = True
+                    print(f"  [LIMIT] {data.get('error', '')[:80]}")
+                    return None
+                # Proxy returned error but not limit — try direct
+                print(f"  [proxy] error: {data.get('error', '')[:60]}")
+        except Exception:
+            pass  # proxy not available, try direct
 
         media_entities = []
         if media_id:
